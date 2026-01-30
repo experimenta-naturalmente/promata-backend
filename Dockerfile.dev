@@ -1,0 +1,37 @@
+# Dockerfile.dev - Ambiente de desenvolvimento otimizado
+FROM node:24-alpine
+
+RUN apk add --no-cache openssl libc6-compat curl
+
+WORKDIR /app
+
+ENV NODE_ENV=development
+ENV CHOKIDAR_USEPOLLING=true
+
+# Copiar arquivos de dependências primeiro (melhor cache)
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Instalar dependências
+RUN npm ci && npm cache clean --force
+
+# Gerar cliente Prisma
+RUN npx prisma generate
+
+# Copiar código fonte por último (muda mais frequentemente)
+COPY . .
+
+EXPOSE 3000
+
+# Criar usuário não-root
+RUN addgroup -g 1001 -S nodejs \
+  && adduser -S nestjs -u 1001 \
+  && chown -R nestjs:nodejs /app
+
+USER nestjs
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# Comando simplificado (prisma generate já foi feito acima)
+CMD ["npm", "run", "start:dev"]

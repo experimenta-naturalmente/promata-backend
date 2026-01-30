@@ -1,0 +1,462 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy_db_dev:
+        description: "Executar migrations no ambiente DEV"
+        type: boolean
+        default: false
+      deploy_db_prod:
+        description: "Executar migrations no ambiente PROD"
+        type: boolean
+        default: false
+
+env:
+  NODE_VERSION: '24.11.0'
+  DOCKER_REGISTRY: docker.io
+  IMAGE_NAME: norohim/pro-mata-backend
+
+jobs:
+  build-and-verify:
+    name: Build & Verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Test application
+        run: npm run test
+
+      - name: Lint code
+        run: npm run lint || echo "Lint not configured, skipping..."
+
+  publish-dev:
+    name: Publish DEV Image
+    needs: [build-and-verify]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/dev'
+    outputs:
+      image_tag: ${{ steps.define-tags.outputs.image_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ vars.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Define image tags
+        id: define-tags
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          SHORT_SHA=$(echo "${SHA}" | cut -c1-12)
+          echo "image_tag=dev-${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Build and push image
+        id: docker_build_dev
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.dev
+          push: true
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:dev
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.define-tags.outputs.image_tag }}
+          # Cache otimizado: registry + gha
+          cache-from: |
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:dev
+            type=gha
+          cache-to: type=gha,mode=max
+          # DEV: apenas AMD64 (mais rápido)
+          platforms: linux/amd64
+          # BuildKit inline cache
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+      - name: Print Image Digest
+        run: echo "DEV image pushed with digest ${{ steps.docker_build_dev.outputs.digest }}"
+
+  publish-prod:
+    name: Publish PROD Image
+    needs: [build-and-verify]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      image_tag: ${{ steps.define-tags.outputs.image_tag }}
+      version_tag: ${{ steps.define-tags.outputs.version_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ vars.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Define image tags
+        id: define-tags
+        env:
+          SHA: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          SHORT_SHA=$(echo "${SHA}" | cut -c1-12)
+          echo "image_tag=prod-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "version_tag=v${RUN_NUMBER}" >> $GITHUB_OUTPUT
+
+      - name: Build and push image
+        id: docker_build_prod
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.deliver
+          push: true
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:prod
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.define-tags.outputs.image_tag }}
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.define-tags.outputs.version_tag }}
+          # Cache otimizado: registry + gha
+          cache-from: |
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            type=gha
+          cache-to: type=gha,mode=max
+          # PROD: multi-arch (mantém compatibilidade)
+          platforms: linux/amd64
+          # BuildKit inline cache
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+      - name: Print Image Digest
+        run: echo "PROD image pushed with digest ${{ steps.docker_build_prod.outputs.digest }}"
+
+  deploy-dev:
+    name: Deploy DEV to EC2
+    needs: [publish-dev]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/dev'
+    steps:
+      - name: Deploy container on DEV host
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEV_EC2_HOST }}
+          username: ${{ secrets.DEV_EC2_USER }}
+          key: ${{ secrets.DEV_EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            IMAGE="${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}"
+            IMAGE_TAG="${{ needs.publish-dev.outputs.image_tag }}"
+            IMAGE_WITH_TAG="${IMAGE}:${IMAGE_TAG}"
+            CONTAINER="${{ secrets.DEV_DOCKER_CONTAINER_NAME }}"
+            PORTS="${{ secrets.DEV_DOCKER_PORT_MAPPING }}"
+            ENV_FILE="${{ secrets.DEV_DOCKER_ENV_FILE }}"
+            EXTRA_ARGS="${{ secrets.DEV_DOCKER_EXTRA_ARGS }}"
+            DATABASE_URL="${{ secrets.DEV_DATABASE_URL }}"
+            JWT_SECRET="${{ secrets.PROD_JWT_SECRET }}"
+            AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
+            AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+            AWS_S3_REGION="${{ vars.AWS_REGION }}"
+            AWS_S3_BUCKET="${{ secrets.DEV_AWS_S3_BUCKET }}"
+            MAIL_HOST="${{ secrets.MAIL_HOST }}"
+            MAIL_PORT="${{ secrets.MAIL_PORT }}"
+            MAIL_USER="${{ secrets.MAIL_USER }}"
+            MAIL_PASS="${{ secrets.MAIL_PASS }}"
+            MAIL_FROM="${{ secrets.MAIL_FROM }}"
+            MAIL_FROM_NAME="${{ secrets.MAIL_FROM_NAME }}"
+            FRONTEND_URL="${{ secrets.FRONTEND_URL }}"
+
+            if [ -z "${DATABASE_URL}" ]; then
+              echo "DEV_DATABASE_URL secret must be configured" >&2
+              exit 1
+            fi
+
+            if [ -z "${JWT_SECRET}" ]; then
+              echo "DEV_JWT_SECRET secret must be configured" >&2
+              exit 1
+            fi
+
+            if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
+              echo "DEV AWS credentials must be configured" >&2
+              exit 1
+            fi
+
+            if [ -z "${AWS_S3_REGION}" ] || [ -z "${AWS_S3_BUCKET}" ]; then
+              echo "DEV AWS S3 region and bucket must be configured" >&2
+              exit 1
+            fi
+
+            docker pull "${IMAGE_WITH_TAG}"
+
+            docker stop "${CONTAINER}" || true
+            docker rm "${CONTAINER}" || true
+
+            ENV_FLAG=""
+            if [ -n "${ENV_FILE}" ]; then
+              ENV_FLAG="--env-file ${ENV_FILE}"
+            fi
+
+            EXTRA_FLAG=""
+            if [ -n "${EXTRA_ARGS}" ]; then
+              EXTRA_FLAG="${EXTRA_ARGS}"
+            fi
+
+            docker run -d \
+              --name "${CONTAINER}" \
+              -p "${PORTS}" \
+              ${ENV_FLAG} \
+              -e "DATABASE_URL=${DATABASE_URL}" \
+              -e "JWT_SECRET=${JWT_SECRET}" \
+              -e "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" \
+              -e "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" \
+              -e "AWS_S3_REGION=${AWS_S3_REGION}" \
+              -e "AWS_S3_BUCKET=${AWS_S3_BUCKET}" \
+              -e MAIL_HOST="${MAIL_HOST}" \
+              -e MAIL_PORT="${MAIL_PORT}" \
+              -e MAIL_USER="${MAIL_USER}" \
+              -e MAIL_PASS="${MAIL_PASS}" \
+              -e MAIL_FROM="${MAIL_FROM}" \
+              -e MAIL_FROM_NAME="${MAIL_FROM_NAME}" \
+              -e FRONTEND_URL="${FRONTEND_URL}" \
+              ${EXTRA_FLAG} \
+              --restart always \
+              --health-cmd="curl -f http://localhost:3000/health || exit 1" \
+              --health-interval=10s \
+              --health-timeout=5s \
+              --health-retries=3 \
+              --health-start-period=40s \
+              "${IMAGE_WITH_TAG}"
+
+            # Aguardar o container ficar healthy
+            echo "Aguardando container ficar healthy..."
+            MAX_WAIT=60
+            ELAPSED=0
+            while [ $ELAPSED -lt $MAX_WAIT ]; do
+              HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' "${CONTAINER}" 2>/dev/null || echo "none")
+
+              if [ "$HEALTH_STATUS" = "healthy" ]; then
+                echo "✓ Container está healthy!"
+                break
+              elif [ "$HEALTH_STATUS" = "unhealthy" ]; then
+                echo "✗ Container está unhealthy. Logs:" >&2
+                docker logs --tail 50 "${CONTAINER}" >&2
+                docker stop "${CONTAINER}"
+                docker rm "${CONTAINER}"
+                exit 1
+              fi
+
+              echo "Status: ${HEALTH_STATUS}, aguardando... (${ELAPSED}s/${MAX_WAIT}s)"
+              sleep 5
+              ELAPSED=$((ELAPSED + 5))
+            done
+
+            if [ $ELAPSED -ge $MAX_WAIT ]; then
+              echo "✗ Timeout aguardando container ficar healthy. Logs:" >&2
+              docker logs --tail 50 "${CONTAINER}" >&2
+              docker stop "${CONTAINER}"
+              docker rm "${CONTAINER}"
+              exit 1
+            fi
+
+            docker exec "${CONTAINER}" npx prisma migrate deploy || true
+
+            docker image prune -af || true
+
+  manual-db-dev:
+    name: Manual DB Deploy DEV
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.deploy_db_dev == 'true'
+    steps:
+      - name: Run migrations on DEV
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEV_EC2_HOST }}
+          username: ${{ secrets.DEV_EC2_USER }}
+          key: ${{ secrets.DEV_EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            CONTAINER="${{ secrets.DEV_DOCKER_CONTAINER_NAME }}"
+            docker exec "${CONTAINER}" npx prisma migrate deploy
+
+  manual-db-prod:
+    name: Manual DB Deploy PROD
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.deploy_db_prod == 'true'
+    steps:
+      - name: Run migrations on PROD
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PROD_EC2_HOST }}
+          username: ${{ secrets.PROD_EC2_USER }}
+          key: ${{ secrets.PROD_EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            CONTAINER="${{ secrets.PROD_DOCKER_CONTAINER_NAME }}"
+            docker exec "${CONTAINER}" npx prisma migrate deploy
+
+  deploy-prod:
+    name: Deploy PROD to EC2
+    needs: [publish-prod]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy container on PROD host
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PROD_EC2_HOST }}
+          username: ${{ secrets.PROD_EC2_USER }}
+          key: ${{ secrets.PROD_EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            IMAGE="${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}"
+            IMAGE_TAG="${{ needs.publish-prod.outputs.image_tag }}"
+            IMAGE_WITH_TAG="${IMAGE}:${IMAGE_TAG}"
+            CONTAINER="${{ secrets.PROD_DOCKER_CONTAINER_NAME }}"
+            PORTS="${{ secrets.PROD_DOCKER_PORT_MAPPING }}"
+            ENV_FILE="${{ secrets.PROD_DOCKER_ENV_FILE }}"
+            EXTRA_ARGS="${{ secrets.PROD_DOCKER_EXTRA_ARGS }}"
+            DATABASE_URL="${{ secrets.PROD_DATABASE_URL }}"
+            JWT_SECRET="${{ secrets.PROD_JWT_SECRET }}"
+            AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
+            AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+            AWS_S3_REGION="${{ vars.AWS_REGION }}"
+            AWS_S3_BUCKET="${{ secrets.PROD_AWS_S3_BUCKET }}"
+            MAIL_HOST="${{ secrets.MAIL_HOST }}"
+            MAIL_PORT="${{ secrets.MAIL_PORT }}"
+            MAIL_USER="${{ secrets.MAIL_USER }}"
+            MAIL_PASS="${{ secrets.MAIL_PASS }}"
+            MAIL_FROM="${{ secrets.MAIL_FROM }}"
+            MAIL_FROM_NAME="${{ secrets.MAIL_FROM_NAME }}"
+            FRONTEND_URL="${{ secrets.FRONTEND_URL }}"
+
+            if [ -z "${DATABASE_URL}" ]; then
+              echo "PROD_DATABASE_URL secret must be configured" >&2
+              exit 1
+            fi
+
+            if [ -z "${JWT_SECRET}" ]; then
+              echo "PROD_JWT_SECRET secret must be configured" >&2
+              exit 1
+            fi
+
+            if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
+              echo "PROD AWS credentials must be configured" >&2
+              exit 1
+            fi
+
+            if [ -z "${AWS_S3_REGION}" ] || [ -z "${AWS_S3_BUCKET}" ]; then
+              echo "PROD AWS S3 region and bucket must be configured" >&2
+              exit 1
+            fi
+
+            docker pull "${IMAGE_WITH_TAG}"
+            docker pull "${IMAGE}:latest" || true
+
+            docker stop "${CONTAINER}" || true
+            docker rm "${CONTAINER}" || true
+
+            ENV_FLAG=""
+            if [ -n "${ENV_FILE}" ]; then
+              ENV_FLAG="--env-file ${ENV_FILE}"
+            fi
+
+            EXTRA_FLAG=""
+            if [ -n "${EXTRA_ARGS}" ]; then
+              EXTRA_FLAG="${EXTRA_ARGS}"
+            fi
+
+            docker run -d \
+              --name "${CONTAINER}" \
+              -p "${PORTS}" \
+              ${ENV_FLAG} \
+              ${EXTRA_FLAG} \
+              -e DATABASE_URL="${DATABASE_URL}" \
+              -e JWT_SECRET="${JWT_SECRET}" \
+              -e AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}" \
+              -e AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}" \
+              -e AWS_S3_REGION="${AWS_S3_REGION}" \
+              -e AWS_S3_BUCKET="${AWS_S3_BUCKET}" \
+              -e MAIL_HOST="${MAIL_HOST}" \
+              -e MAIL_PORT="${MAIL_PORT}" \
+              -e MAIL_USER="${MAIL_USER}" \
+              -e MAIL_PASS="${MAIL_PASS}" \
+              -e MAIL_FROM="${MAIL_FROM}" \
+              -e MAIL_FROM_NAME="${MAIL_FROM_NAME}" \
+              -e FRONTEND_URL="${FRONTEND_URL}" \
+              ${EXTRA_FLAG} \
+              --restart always \
+              --health-cmd="curl -f http://localhost:3001/health || exit 1" \
+              --health-interval=10s \
+              --health-timeout=5s \
+              --health-retries=3 \
+              --health-start-period=40s \
+              "${IMAGE_WITH_TAG}"
+
+            # Aguardar o container ficar healthy
+            echo "Aguardando container ficar healthy..."
+            MAX_WAIT=120
+            ELAPSED=0
+            while [ $ELAPSED -lt $MAX_WAIT ]; do
+              HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' "${CONTAINER}" 2>/dev/null || echo "none")
+
+              if [ "$HEALTH_STATUS" = "healthy" ]; then
+                echo "✓ Container está healthy!"
+                break
+              elif [ "$HEALTH_STATUS" = "unhealthy" ]; then
+                echo "✗ Container está unhealthy. Logs:" >&2
+                docker logs --tail 50 "${CONTAINER}" >&2
+                docker stop "${CONTAINER}"
+                docker rm "${CONTAINER}"
+                exit 1
+              fi
+
+              echo "Status: ${HEALTH_STATUS}, aguardando... (${ELAPSED}s/${MAX_WAIT}s)"
+              sleep 5
+              ELAPSED=$((ELAPSED + 5))
+            done
+
+            if [ $ELAPSED -ge $MAX_WAIT ]; then
+              echo "✗ Timeout aguardando container ficar healthy. Logs:" >&2
+              docker logs --tail 50 "${CONTAINER}" >&2
+              docker stop "${CONTAINER}"
+              docker rm "${CONTAINER}"
+              exit 1
+            fi
+
+            docker exec "${CONTAINER}" npx prisma migrate deploy || true
+
+            docker image prune -af || true

@@ -1,0 +1,263 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String               @id @default(uuid())
+  userType           UserType
+  name               String
+  email              String               @unique
+  password           String
+  phone              String
+  document           String?              @unique
+  gender             String
+  rg                 String?              @unique
+  institution        String?
+  isForeign          Boolean
+  active             Boolean              @default(true)
+  verified           Boolean
+  address            Address?             @relation(fields: [addressId], references: [id])
+  addressId          String?              @unique
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  PasswordResetToken PasswordResetToken[]
+  Receipt            Receipt[]
+  Reservation        Reservation[]
+  createdBy          User?                @relation("createdBy", fields: [createdByUserId], references: [id])
+  createdByUserId    String?
+  User               User[]               @relation("createdBy")
+  RequestsCreatedBy  Requests[]           @relation("RequestsCreatedBy")
+  documents          Document[]
+  ReservationGroup   ReservationGroup[]
+  isFirstAccess      Boolean              @default(false)
+  ProfessorRequests  Requests[]           @relation("ProfessorRequest")
+}
+
+enum UserType {
+  ADMIN
+  ROOT
+  GUEST
+  PROFESSOR
+}
+
+model Address {
+  id        String   @id @default(uuid())
+  street    String?
+  number    String?
+  city      String?
+  zip       String?
+  country   String
+  user      User?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PasswordResetToken {
+  token     String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  expiredAt DateTime
+  createdAt DateTime
+  isActive  Boolean  @default(true)
+}
+
+model Receipt {
+  id               String            @id @default(uuid())
+  type             ReceiptType
+  createdAt        DateTime          @default(now())
+  value            Decimal?
+  status           ReceiptStatus     @default(PENDING)
+  url              String
+  user             User              @relation(fields: [userId], references: [id])
+  userId           String
+  reservationGroup ReservationGroup?
+}
+
+enum ReceiptStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+}
+
+enum ReceiptType {
+  PAYMENT
+  DOCENCY
+}
+
+enum WeekDay {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum TrailDifficulty {
+  LIGHT
+  MODERATED
+  HEAVY
+  EXTREME
+}
+
+enum Category {
+  TRAIL
+  HOSTING
+  LABORATORY
+  EVENT
+}
+
+enum HighlightCategory {
+  LABORATORY
+  HOSTING
+  EVENT
+  TRAIL
+  CAROUSEL
+}
+
+model Image {
+  id         String       @id @default(uuid())
+  url        String       @unique
+  active     Boolean      @default(true)
+  Experience Experience[]
+}
+
+model Experience {
+  id                 String           @id @default(uuid())
+  name               String
+  description        String
+  category           Category
+  capacity           Int
+  image              Image?           @relation(fields: [imageId], references: [id])
+  startDate          DateTime?
+  endDate            DateTime?
+  price              Decimal?
+  professorShouldPay Boolean          @default(true)
+  weekDays           WeekDay[]
+  durationMinutes    Int?
+  trailDifficulty    TrailDifficulty?
+  trailLength        Float?
+  imageId            String?
+  active             Boolean
+  reservation        Reservation[]
+  createdAt          DateTime         @default(now())
+}
+
+model Document {
+  id               String      @id @default(uuid())
+  reservation      Reservation @relation(fields: [reservationId], references: [id])
+  reservationId    String
+  url              String      @unique
+  uploadedByUserId String
+  uploadedByUser   User        @relation(fields: [uploadedByUserId], references: [id])
+  uploadedAt       DateTime    @default(now())
+}
+
+model Reservation {
+  id                 String           @id @default(uuid())
+  user               User             @relation(fields: [userId], references: [id])
+  userId             String
+  experience         Experience       @relation(fields: [experienceId], references: [id])
+  experienceId       String
+  price              Decimal?         @default(0)
+  startDate          DateTime?
+  endDate            DateTime?
+  createdAt          DateTime         @default(now())
+  active             Boolean          @default(true)
+  membersCount       Int
+  ReservationGroup   ReservationGroup @relation(fields: [reservationGroupId], references: [id])
+  reservationGroupId String
+  Document           Document[]
+}
+
+model Requests {
+  id                 String            @id @default(uuid())
+  type               RequestType
+  description        String?
+  createdAt          DateTime          @default(now())
+  createdBy          User              @relation("RequestsCreatedBy", fields: [createdByUserId], references: [id])
+  createdByUserId    String
+  ReservationGroup   ReservationGroup? @relation(fields: [reservationGroupId], references: [id])
+  reservationGroupId String?
+  Professor          User?             @relation("ProfessorRequest", fields: [professorId], references: [id])
+  professorId        String?
+  fileUrl            String?
+}
+
+enum RequestType {
+  CREATED
+  CANCELED
+  CANCEL_REJECTED
+  CANCELED_REQUESTED
+  EDITED
+  EDIT_REQUESTED
+  REJECTED
+  APPROVED
+  PEOPLE_REQUESTED
+  PAYMENT_REQUESTED
+  PEOPLE_SENT
+  PAYMENT_SENT
+  PAYMENT_REJECTED
+  PAYMENT_APPROVED
+  DOCUMENT_REQUESTED
+  DOCUMENT_APPROVED
+  DOCUMENT_REJECTED
+}
+
+model Member {
+  id                 String           @id @default(uuid())
+  name               String
+  document           String?
+  gender             String
+  phone              String?
+  birthDate          DateTime         @default(now())
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  active             Boolean          @default(true)
+  reservationGroup   ReservationGroup @relation(fields: [reservationGroupId], references: [id])
+  reservationGroupId String
+
+  @@unique([reservationGroupId, document])
+}
+
+model ReservationGroup {
+  id           String        @id @default(uuid())
+  reservations Reservation[]
+  user         User          @relation(fields: [userId], references: [id])
+  userId       String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  notes        String?
+  active       Boolean       @default(true)
+  requests     Requests[]
+  members      Member[]
+  receipt      Receipt?      @relation(fields: [receiptId], references: [id])
+  receiptId    String?       @unique
+}
+
+model Highlight {
+  id          String            @id @default(uuid())
+  category    HighlightCategory
+  imageUrl    String
+  title       String
+  description String?
+  order       Int               @default(1)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([category, order])
+  @@index([category])
+}
