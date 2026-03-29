@@ -25,6 +25,7 @@ jobs:
   build-and-verify:
     name: Build & Verify
     runs-on: ubuntu-latest
+    environment: Produção
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,6 +55,7 @@ jobs:
     name: Publish DEV Image
     needs: [build-and-verify]
     runs-on: ubuntu-latest
+    environment: Produção
     if: github.ref == 'refs/heads/dev'
     outputs:
       image_tag: ${{ steps.define-tags.outputs.image_tag }}
@@ -107,6 +109,7 @@ jobs:
     name: Publish PROD Image
     needs: [build-and-verify]
     runs-on: ubuntu-latest
+    environment: Produção
     if: github.ref == 'refs/heads/main'
     outputs:
       image_tag: ${{ steps.define-tags.outputs.image_tag }}
@@ -165,6 +168,7 @@ jobs:
     name: Deploy DEV to EC2
     needs: [publish-dev]
     runs-on: ubuntu-latest
+    environment: Produção
     if: github.ref == 'refs/heads/dev'
     steps:
       - name: Deploy container on DEV host
@@ -295,6 +299,7 @@ jobs:
   manual-db-dev:
     name: Manual DB Deploy DEV
     runs-on: ubuntu-latest
+    environment: Produção
     if: |
       github.event_name == 'workflow_dispatch' &&
       github.event.inputs.deploy_db_dev == 'true'
@@ -313,6 +318,7 @@ jobs:
   manual-db-prod:
     name: Manual DB Deploy PROD
     runs-on: ubuntu-latest
+    environment: Produção
     if: |
       github.event_name == 'workflow_dispatch' &&
       github.event.inputs.deploy_db_prod == 'true'
@@ -333,6 +339,7 @@ jobs:
     needs: [publish-prod]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    environment: Produção
     steps:
       - name: Deploy container on PROD host
         uses: appleboy/ssh-action@v1.0.0
