@@ -19,7 +19,7 @@ on:
 env:
   NODE_VERSION: '24.11.0'
   DOCKER_REGISTRY: docker.io
-  IMAGE_NAME: norohim/pro-mata-backend
+  IMAGE_NAME: experimentanaturalmente/pro-mata-backend
 
 jobs:
   build-and-verify:
