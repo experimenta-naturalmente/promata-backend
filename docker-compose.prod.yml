@@ -22,7 +22,7 @@ services:
       - promata_prod
 
   backend:
-    image: norohim/pro-mata-backend:latest
+    image: experimentanaturalmente/pro-mata-backend:latest
     container_name: promata-backend-prod
     depends_on:
       postgres:
