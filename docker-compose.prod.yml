@@ -39,6 +39,13 @@ services:
     restart: always
     networks:
       - promata_prod
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.promata-storage.rule=Host(`storage.promata.com.br`)"
+      - "traefik.http.routers.promata-storage.entrypoints=websecure"
+      - "traefik.http.routers.promata-storage.tls=true"
+      - "traefik.http.routers.promata-storage.tls.certresolver=letsencrypt"
+      - "traefik.http.services.promata-storage.loadbalancer.server.port=9000"
 
   minio-init:
     image: minio/mc:latest
@@ -95,6 +102,13 @@ services:
       start_period: 40s
     networks:
       - promata_prod
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.promata-api.rule=Host(`api.promata.com.br`)"
+      - "traefik.http.routers.promata-api.entrypoints=websecure"
+      - "traefik.http.routers.promata-api.tls=true"
+      - "traefik.http.routers.promata-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.promata-api.loadbalancer.server.port=3000"
 
 volumes:
   postgres_data:
