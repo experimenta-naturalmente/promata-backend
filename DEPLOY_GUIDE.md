@@ -1,12 +1,11 @@
-# 🚀 Deploy com Docker Compose - Guia Completo
+# 🚀 Deploy com Docker Compose - Guia Completo (VPS Hostinger)
 
-Este guia explica como fazer deploy do backend na EC2 sem AWS RDS usando Docker Compose.
+Este guia explica como fazer deploy do backend em uma VPS (Hostinger) usando Docker Compose, com PostgreSQL rodando em container (sem depender de serviços AWS).
 
-## 📋 Arquivos Criados
+## 📋 Arquivos Envolvidos
 
 - **`docker-compose.prod.yml`** - Configuração do Docker Compose com PostgreSQL + Backend
-- **`setup-ec2.sh`** - Script de setup automático da EC2
-- **`.github/workflows/ci-cd.yml`** - Workflow CI/CD modificado para usar docker compose
+- **`.github/workflows/ci-cd.yml`** - Workflow CI/CD que builda a imagem e faz deploy via SSH
 
 ## 🎯 Fluxo de Deploy
 
@@ -17,60 +16,116 @@ GitHub Actions (CI/CD) → Build & Testes
     ↓
 Push imagem ao Docker Hub
     ↓
-SSH na EC2 → docker compose pull & up
+SSH na VPS → docker compose pull & up
     ↓
 ✅ API + PostgreSQL rodando
 ```
 
 ## 🔧 Setup Inicial (Uma Única Vez)
 
-### 1. Na EC2 - Instalar Docker e Docker Compose
-
-Se você ainda não tem acesso SSH à EC2, [siga este guia primeiro](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AccessingInstances.html).
+### 1. Acessar a VPS
 
 ```bash
-# SSH na EC2
-ssh -i sua-chave.pem ec2-user@seu-ec2-ip
-# ou para Ubuntu
-ssh -i sua-chave.pem ubuntu@seu-ec2-ip
+ssh root@SEU_IP_DA_VPS
+```
 
-# Executar script de setup (automatiza tudo)
-curl -fsSL https://raw.githubusercontent.com/SEU_USER/promata/main/setup-ec2.sh | bash
+O IP da VPS fica no hPanel da Hostinger → **VPS** → seu servidor → aba **Visão Geral** (IPv4 Address).
 
-# OU fazer manualmente:
-sudo yum install docker -y  # (ou apt-get se for Ubuntu)
-sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-sudo systemctl start docker
+### 2. Instalar Docker e Docker Compose
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+
+# Chave GPG oficial do Docker
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+# Repositório oficial do Docker
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Iniciar e habilitar Docker
+sudo systemctl enable docker --now
+
+# Permitir rodar docker sem sudo (faça logout/login depois)
 sudo usermod -aG docker $USER
-# Fazer logout e login para permissões funcionarem
 ```
 
-### 2. Testar Conexão SSH Localmente
+> ⚠️ O comando é `docker compose` (sem hífen), pois usamos o plugin oficial — não o binário antigo `docker-compose`.
+
+### 3. Configurar Firewall (UFW)
+
+Não existe "Security Group" como na AWS — use o `ufw`:
 
 ```bash
-# Da sua máquina local
-ssh -i caminho/para/chave.pem ec2-user@seu-ec2-ip "docker ps"
-
-# Deve mostrar uma lista de containers (possivelmente vazia)
+sudo ufw allow 22/tcp      # SSH
+sudo ufw allow 3000/tcp    # API
+sudo ufw enable
 ```
 
-### 3. Adicionar GitHub Secrets
+A porta **5432 (Postgres) NÃO deve ser exposta** externamente — o `docker-compose.prod.yml` já cuida disso via rede interna `promata_prod`. Se o compose mapear `5432:5432`, considere remover esse mapeamento de portas em produção.
+
+### 4. Gerar Chave SSH para o GitHub Actions
+
+Na sua máquina **local**:
+
+```bash
+ssh-keygen -t ed25519 -C "deploy-promata" -f ~/.ssh/promata_deploy
+```
+
+Copie a chave pública para a VPS:
+
+```bash
+ssh-copy-id -i ~/.ssh/promata_deploy.pub root@SEU_IP_DA_VPS
+```
+
+Teste a conexão:
+
+```bash
+ssh -i ~/.ssh/promata_deploy root@SEU_IP_DA_VPS "docker ps"
+```
+
+> 🔒 Recomendado: desabilitar login por senha em `/etc/ssh/sshd_config` (`PasswordAuthentication no`) e reiniciar com `sudo systemctl restart sshd`.
+
+### 5. Clonar o Repositório na VPS
+
+```bash
+mkdir -p ~/promata-backend
+cd ~/promata-backend
+git clone https://github.com/SEU_USER/promata.git .
+```
+
+> Se o repositório for **privado**, use um Personal Access Token:
+> `git clone https://SEU_TOKEN@github.com/SEU_USER/promata.git .`
+
+Teste se o compose está válido:
+
+```bash
+docker compose -f docker-compose.prod.yml config > /dev/null && echo "OK"
+```
+
+### 6. Adicionar GitHub Secrets
 
 **GitHub → Settings → Secrets and variables → Actions → New repository secret**
 
-Adicione estes secrets:
-
 ```
-PROD_EC2_HOST           = seu-ec2-ip (ex: 54.123.45.67)
-PROD_EC2_USER           = ec2-user (ou ubuntu)
-PROD_EC2_SSH_KEY        = (conteúdo completo da chave privada)
+PROD_EC2_HOST           = IP da VPS
+PROD_EC2_USER           = root
+PROD_EC2_SSH_KEY        = (conteúdo completo da chave privada ~/.ssh/promata_deploy)
 
-PROD_DB_PASSWORD        = SenhaForte123!@# (escolha uma)
-PROD_JWT_SECRET         = sua-secret-jwt
+PROD_DB_PASSWORD        = SenhaForte123!@# (escolha uma, ex: openssl rand -base64 32)
+PROD_JWT_SECRET         = sua-secret-jwt (ex: openssl rand -hex 32)
 
 AWS_ACCESS_KEY_ID       = (deixe em branco se não usar S3)
 AWS_SECRET_ACCESS_KEY   = (deixe em branco se não usar S3)
+PROD_AWS_S3_BUCKET      = (deixe em branco se não usar S3)
 
 MAIL_HOST              = seu-smtp-host (ex: smtp.gmail.com)
 MAIL_PORT              = 587
@@ -80,15 +135,17 @@ MAIL_FROM              = noreply@seu-dominio.com
 MAIL_FROM_NAME         = Seu App
 
 FRONTEND_URL           = http://seu-frontend.com
-PROD_AWS_S3_BUCKET     = seu-bucket (se usar S3)
 
 DOCKER_PASSWORD        = token-docker-hub
 ```
 
+> Os nomes dos secrets mantêm o prefixo `PROD_EC2_*` por compatibilidade com o workflow existente — não é necessário renomear, apenas trocar os **valores** para os dados da VPS.
+
 **Variables** (não são secretas):
 
 ```
-AWS_REGION             = us-east-1 (ou sua região)
+AWS_REGION             = us-east-1 (ou deixe um valor qualquer se não usar S3)
+DOCKER_USERNAME        = seu-usuario-docker-hub
 ```
 
 ## 🚀 Como Fazer Deploy
@@ -112,17 +169,14 @@ git push origin main
 ### Opção 2: Deploy Manual
 
 ```bash
-# SSH na EC2
-ssh -i sua-chave.pem ec2-user@seu-ec2-ip
+ssh root@SEU_IP_DA_VPS
 
-# Atualizar código
 cd ~/promata-backend
 git pull origin main
 
-# Redeploy
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml down
-docker compose -f docker-compose.prod.yml up -d
+docker compose --env-file .env -f docker-compose.prod.yml up -d
 
 # Ver logs
 docker compose -f docker-compose.prod.yml logs -f backend
@@ -135,10 +189,10 @@ docker compose -f docker-compose.prod.yml logs -f backend
 2. Clique no workflow em execução
 3. Veja logs em tempo real
 
-### Via EC2
+### Via VPS
 
 ```bash
-ssh -i sua-chave.pem ec2-user@seu-ec2-ip
+ssh root@SEU_IP_DA_VPS
 
 # Ver containers rodando
 docker ps
@@ -158,7 +212,9 @@ docker system df
 
 ## 📊 Variáveis de Ambiente
 
-Todas as variáveis são carregadas automaticamente do `.env.prod` que o workflow cria.
+Todas as variáveis são carregadas automaticamente do arquivo **`.env`** (gerado pelo workflow na VPS, na pasta `~/promata-backend`).
+
+> ⚠️ O Docker Compose só lê automaticamente um arquivo chamado `.env` no mesmo diretório do `docker-compose.prod.yml`. Se o workflow gerar `.env.prod`, é necessário usar `--env-file .env.prod` em todos os comandos `docker compose`, ou renomear o arquivo gerado para `.env`.
 
 | Variável | Padrão | Descrição |
 |----------|--------|-----------|
@@ -170,14 +226,15 @@ Todas as variáveis são carregadas automaticamente do `.env.prod` que o workflo
 
 ## 🔒 Segurança
 
-### Para PROD
+### Firewall (UFW)
 
 ```bash
-# Na EC2, após primeira configuração
-# Editar security group da EC2 para aceitar:
-# - SSH: apenas seu IP
-# - TCP 3000: apenas seu frontend IP (ou deixe aberto)
-# - TCP 5432: NENHUM acesso de fora (apenas entre containers)
+# Já configurado no setup, mas para revisar:
+sudo ufw status
+
+# SSH: idealmente restrito ao seu IP
+# TCP 3000: API (ou apenas 80/443 se usar Nginx + proxy reverso)
+# TCP 5432: NUNCA exposto externamente
 ```
 
 ### Backup do Banco
@@ -187,7 +244,7 @@ Todas as variáveis são carregadas automaticamente do `.env.prod` que o workflo
 docker exec promata-postgres-prod pg_dump -U postgres promata_db > backup.sql
 
 # Enviar para storage seguro
-scp backup.sql seu-storage:/backups/
+scp backup.sql usuario@outro-servidor:/backups/
 
 # Restore
 docker exec -i promata-postgres-prod psql -U postgres promata_db < backup.sql
@@ -218,17 +275,26 @@ docker compose -f docker-compose.prod.yml up -d
 ### "Image not found"
 ```bash
 # Docker Hub image não conseguiu fazer pull
-docker login  # use seus credenciais do Docker Hub
+docker login  # use suas credenciais do Docker Hub
 docker compose -f docker-compose.prod.yml pull
+```
+
+### "command not found: docker-compose"
+```bash
+# A VPS usa o plugin novo, sem hífen:
+docker compose version
+
+# Se algum script antigo ainda usa "docker-compose" (com hífen),
+# substitua por "docker compose" (espaço, sem hífen)
 ```
 
 ### "SSH key permission denied"
 ```bash
 # Permissões erradas da chave privada
-chmod 400 /caminho/para/chave.pem
+chmod 400 ~/.ssh/promata_deploy
 
-# Ou na EC2
-ssh-keyscan -H seu-ec2-ip >> ~/.ssh/known_hosts
+# Ou na VPS, garantir que a chave pública está em authorized_keys
+ssh-keyscan -H SEU_IP_DA_VPS >> ~/.ssh/known_hosts
 ```
 
 ## 📚 Comandos Úteis
@@ -257,15 +323,17 @@ docker compose -f docker-compose.prod.yml logs -f postgres
 docker compose -f docker-compose.prod.yml build --no-cache
 ```
 
-## 🎯 Próximos Passos
+## 🎯 Checklist de Setup
 
-1. ✅ Setup da EC2 com script
-2. ✅ Adicionar secrets do GitHub
-3. ✅ Fazer push para main
-4. ✅ Acompanhar em Actions
-5. ✅ Testar API em `http://seu-ec2-ip:3000/health`
-6. ⚠️ Configurar domínio + SSL com Nginx/Let's Encrypt (opcional)
-7. ⚠️ Configurar backups automáticos do banco (opcional)
+1. ✅ VPS Hostinger configurada (Docker + Docker Compose plugin)
+2. ✅ Firewall (UFW) configurado
+3. ✅ Chave SSH gerada e adicionada à VPS
+4. ✅ Repositório clonado em `~/promata-backend`
+5. ✅ Secrets do GitHub atualizados (host, user `root`, chave SSH da VPS)
+6. ✅ Branch padrão `main` configurada e push disparando o workflow
+7. ✅ Testar API em `http://SEU_IP_DA_VPS:3000/health`
+8. ⚠️ Configurar domínio + SSL com Nginx/Let's Encrypt (opcional)
+9. ⚠️ Configurar backups automáticos do banco (opcional)
 
 ## 🆘 Precisa de Ajuda?
 
@@ -275,8 +343,8 @@ Verifique os logs:
 # GitHub Actions
 GitHub → Actions → seu-workflow → logs detalhados
 
-# EC2
-ssh -i chave.pem ec2-user@seu-ip
+# VPS
+ssh root@SEU_IP_DA_VPS
 docker compose -f docker-compose.prod.yml logs
 ```
 

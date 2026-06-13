@@ -1,78 +1,113 @@
-# ✅ Checklist de Deploy com Docker Compose
+# ✅ Checklist de Deploy com Docker Compose (VPS Hostinger)
 
 Use este checklist para garantir que tudo está configurado corretamente.
 
 ## 📋 Pré-requisitos
 
-- [ ] Você tem acesso SSH à EC2 (chave .pem)
+- [ ] Você tem acesso SSH à VPS (usuário `root` + senha inicial ou chave)
 - [ ] Você tem conta no Docker Hub
 - [ ] Você tem permissão para adicionar secrets no GitHub
 - [ ] Sua aplicação passa nos testes (`npm test`)
 
-## 🔧 Fase 1: Setup da EC2 (Uma Única Vez)
+## 🔧 Fase 1: Setup da VPS (Uma Única Vez)
 
-### 1.1 Conectar na EC2
+### 1.1 Conectar na VPS
 
 ```bash
-ssh -i /caminho/para/sua-chave.pem ec2-user@seu-ec2-ip
+ssh root@SEU_IP_DA_VPS
 ```
+
+O IP fica no hPanel da Hostinger → **VPS** → seu servidor → aba **Visão Geral**.
 
 - [ ] Conseguiu conectar via SSH
 
-### 1.2 Executar Setup Script
+### 1.2 Instalar Docker e Docker Compose
 
 ```bash
-# Opção 1: Automático (recomendado)
-curl -fsSL https://raw.githubusercontent.com/SEU_USER/promata/main/setup-ec2.sh | bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
 
-# Opção 2: Manual (veja DEPLOY_GUIDE.md)
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+sudo systemctl enable docker --now
+sudo usermod -aG docker $USER
 ```
 
-- [ ] Script executou sem erros
-- [ ] Docker está instalado (`docker --version`)
-- [ ] Docker Compose está instalado (`docker-compose --version`)
+- [ ] `docker --version` funciona
+- [ ] `docker compose version` funciona (sem hífen — é plugin, não binário separado)
 - [ ] Docker daemon está rodando (`docker ps` retorna lista vazia)
 
-### 1.3 Clonar Repositório
+### 1.3 Configurar Firewall (UFW)
 
 ```bash
-# Script já faz isso, mas verifique
-cd ~/promata-backend
-ls -la docker-compose.prod.yml
+sudo ufw allow 22/tcp
+sudo ufw allow 3000/tcp
+sudo ufw enable
 ```
 
-- [ ] Arquivo `docker-compose.prod.yml` existe
-- [ ] Repositório está na branch `main`
+- [ ] UFW habilitado e permitindo portas 22 e 3000
+- [ ] Porta 5432 (Postgres) **não** está exposta externamente
 
-### 1.4 Logout e Login (Para permissões)
+### 1.4 Clonar Repositório
 
 ```bash
-logout
-ssh -i /caminho/para/sua-chave.pem ec2-user@seu-ec2-ip
+mkdir -p ~/promata-backend
+cd ~/promata-backend
+git clone https://github.com/SEU_USER/promata.git .
+```
+
+- [ ] Arquivo `docker-compose.prod.yml` existe (`ls -la docker-compose.prod.yml`)
+- [ ] Repositório está na branch `main`
+
+### 1.5 Validar Docker Compose
+
+```bash
+docker compose -f docker-compose.prod.yml config > /dev/null && echo "OK"
+```
+
+- [ ] Comando retornou `OK` sem erros
+
+### 1.6 Logout e Login (Para permissões)
+
+```bash
+exit
+ssh root@SEU_IP_DA_VPS
 ```
 
 - [ ] Consegue rodar `docker ps` sem `sudo`
 
 ## 🔑 Fase 2: GitHub Secrets
 
-### 2.1 Preparar Informações
+### 2.1 Gerar Chave SSH para o GitHub Actions
 
 ```bash
-# No seu computador LOCAL, execute:
+# No seu computador LOCAL
+ssh-keygen -t ed25519 -C "deploy-promata" -f ~/.ssh/promata_deploy
+ssh-copy-id -i ~/.ssh/promata_deploy.pub root@SEU_IP_DA_VPS
 
-# Para copiar a chave SSH (conteúdo completo)
-cat /caminho/para/sua-chave.pem
+# Testar
+ssh -i ~/.ssh/promata_deploy root@SEU_IP_DA_VPS "docker ps"
 
-# Para saber o IP da EC2
-echo "seu-ec2-ip"
-
-# Para saber o usuário SSH
-echo "ec2-user"  # ou ubuntu
+# Copiar conteúdo completo da chave PRIVADA (vai pro secret PROD_EC2_SSH_KEY)
+cat ~/.ssh/promata_deploy
 ```
 
-- [ ] Tenho o conteúdo da chave privada `.pem`
-- [ ] Tenho o IP/DNS da EC2
-- [ ] Tenho o nome de usuário SSH
+- [ ] Tenho o conteúdo da chave privada (incluindo `-----BEGIN` e `-----END`)
+- [ ] Tenho o IP da VPS
+- [ ] Usuário SSH é `root`
+- [ ] Login via chave testado e funcionando
+
+> 🔒 Opcional, mas recomendado: desabilitar `PasswordAuthentication` em `/etc/ssh/sshd_config` e `sudo systemctl restart sshd`.
 
 ### 2.2 Gerar Senhas Aleatórias
 
@@ -96,19 +131,21 @@ openssl rand -hex 32
 
 **GitHub → Seu Repositório → Settings → Secrets and variables → Actions**
 
+> Os nomes dos secrets continuam com prefixo `PROD_EC2_*` por compatibilidade com o workflow — apenas os **valores** mudam para os dados da VPS.
+
 #### Secrets Obrigatórios
 
 ```
-PROD_EC2_HOST           = seu-ec2-ip (ex: 54.123.45.67)
-PROD_EC2_USER           = ec2-user
-PROD_EC2_SSH_KEY        = (conteúdo da chave privada .pem)
+PROD_EC2_HOST           = IP da VPS
+PROD_EC2_USER           = root
+PROD_EC2_SSH_KEY        = (conteúdo da chave privada ~/.ssh/promata_deploy)
 PROD_DB_PASSWORD        = (senha gerada acima)
 PROD_JWT_SECRET         = (secret JWT gerado acima)
 DOCKER_PASSWORD         = (token Docker Hub)
 ```
 
 - [ ] Adicionei `PROD_EC2_HOST`
-- [ ] Adicionei `PROD_EC2_USER`
+- [ ] Adicionei `PROD_EC2_USER` (= `root`)
 - [ ] Adicionei `PROD_EC2_SSH_KEY` (conteúdo completo, incluindo `-----BEGIN` e `-----END`)
 - [ ] Adicionei `PROD_DB_PASSWORD`
 - [ ] Adicionei `PROD_JWT_SECRET`
@@ -132,7 +169,7 @@ FRONTEND_URL           = http://seu-frontend.com (ou https)
 ```
 
 - [ ] Adicionei variáveis de email (se usar)
-- [ ] Adicionei variáveis de AWS S3 (se usar)
+- [ ] Adicionei variáveis de AWS S3 (se usar, senão deixei vazias)
 - [ ] Adicionei FRONTEND_URL
 
 ### 2.4 Adicionar Variables (Não-secretas)
@@ -140,7 +177,7 @@ FRONTEND_URL           = http://seu-frontend.com (ou https)
 **GitHub → Settings → Secrets and variables → Variables**
 
 ```
-AWS_REGION             = us-east-1 (ou sua região)
+AWS_REGION             = us-east-1 (ou qualquer valor, se não usar S3)
 DOCKER_USERNAME        = seu-usuario-docker
 ```
 
@@ -163,7 +200,7 @@ git ls-files | grep docker-compose.prod.yml
 
 # Fazer commit de qualquer mudança pendente
 git add .
-git commit -m "Configurar deploy com docker-compose"
+git commit -m "Configurar deploy com docker compose na VPS"
 ```
 
 - [ ] Estou na branch `main`
@@ -177,6 +214,7 @@ git push origin main
 ```
 
 - [ ] Push foi bem-sucedido
+- [ ] Confirmei que o push foi para `main` (não `master` ou outra branch)
 
 ### 3.3 Monitorar Deploy
 
@@ -187,7 +225,7 @@ Procure pelo seu commit mais recente:
 ```
 ✅ build-and-verify       (Build + testes)
 ✅ publish-prod           (Push ao Docker Hub)
-⏳ deploy-prod            (Deploy na EC2)
+⏳ deploy-prod            (Deploy na VPS)
 ```
 
 - [ ] `build-and-verify` completou com sucesso
@@ -199,19 +237,18 @@ Procure pelo seu commit mais recente:
 ```bash
 # Aguarde 30s após o workflow terminar
 
-# Testar healthcheck
-curl http://seu-ec2-ip:3000/health
+curl http://SEU_IP_DA_VPS:3000/health
 
 # Deve retornar algo como:
-# {"status":"ok","timestamp":"2026-05-24T..."}
+# {"status":"ok","timestamp":"2026-06-13T..."}
 ```
 
 - [ ] API respondeu ao healthcheck
 
-### 3.5 Verificar Logs na EC2
+### 3.5 Verificar Logs na VPS
 
 ```bash
-ssh -i /caminho/para/sua-chave.pem ec2-user@seu-ec2-ip
+ssh root@SEU_IP_DA_VPS
 
 # Ver status
 docker ps
@@ -242,11 +279,11 @@ git push origin main
 # GitHub Actions vai fazer o resto
 ```
 
-- [ ] Entendi que deployments são automáticos em push para main
+- [ ] Entendi que deployments são automáticos em push para `main`
 
 ## ✅ Tudo Pronto!
 
-Parabéns! Seu deploy está configurado. 
+Parabéns! Seu deploy está configurado.
 
 ### Próximos Passos Opcionais
 
@@ -261,10 +298,10 @@ Parabéns! Seu deploy está configurado.
 Se algo deu errado, veja:
 
 1. **Logs do GitHub Actions**: GitHub → Actions → seu-workflow
-2. **Logs da EC2**: `docker logs -f promata-backend-prod`
+2. **Logs da VPS**: `docker logs -f promata-backend-prod`
 3. **DEPLOY_GUIDE.md**: Secção "Troubleshooting"
 
-### Comandos de Emergência (SE2)
+### Comandos de Emergência
 
 ```bash
 # Parar tudo (se der problema)
@@ -282,5 +319,5 @@ docker image prune -af
 
 ---
 
-**Última atualização**: 2026-05-24
-**Criado para**: Deploy em Docker Compose (sem AWS RDS)
+**Última atualização**: 2026-06-13
+**Criado para**: Deploy em Docker Compose na VPS Hostinger (sem AWS EC2/RDS)
