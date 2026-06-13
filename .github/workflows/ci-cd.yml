@@ -107,6 +107,7 @@ jobs:
     name: Publish PROD Image
     needs: [build-and-verify]
     runs-on: ubuntu-latest
+    environment: Produção
     if: github.ref == 'refs/heads/main'
     outputs:
       image_tag: ${{ steps.define-tags.outputs.image_tag }}
