@@ -25,12 +25,17 @@ export class StorageService {
   private readonly region: string;
   private readonly accessKeyId: string;
   private readonly secretAccessKey: string;
+  private readonly endpoint: string;
+  private readonly publicUrl: string;
 
   constructor(private readonly configService: ConfigService) {
     this.bucket = this.configService.get<string>('AWS_S3_BUCKET')?.trim() ?? '';
     this.region = this.configService.get<string>('AWS_S3_REGION')?.trim() ?? '';
     this.accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID')?.trim() ?? '';
     this.secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY')?.trim() ?? '';
+    this.endpoint = this.configService.get<string>('AWS_S3_ENDPOINT')?.trim() ?? '';
+    // URL pública usada para montar os links dos arquivos (útil com MinIO atrás de proxy)
+    this.publicUrl = this.configService.get<string>('AWS_S3_PUBLIC_URL')?.trim() ?? '';
 
     if (!this.bucket) {
       throw new Error('AWS_S3_BUCKET environment variable is not set');
@@ -51,6 +56,8 @@ export class StorageService {
       region: this.region,
       forcePathStyle: true,
       credentials,
+      // Quando definido, aponta o SDK para um endpoint S3-compatible (ex: MinIO)
+      ...(this.endpoint ? { endpoint: this.endpoint } : {}),
     });
   }
 
@@ -122,6 +129,18 @@ export class StorageService {
   }
 
   getFileUrl(fileKey: string): string {
+    // Se AWS_S3_PUBLIC_URL estiver definida (ex: http://SEU_IP:9000 ou https://seu-dominio),
+    // monta a URL no formato path-style (compatível com MinIO)
+    if (this.publicUrl) {
+      return `${this.publicUrl.replace(/\/$/, '')}/${this.bucket}/${fileKey}`;
+    }
+
+    // Se um endpoint customizado (S3-compatible) estiver definido, usa path-style nele também
+    if (this.endpoint) {
+      return `${this.endpoint.replace(/\/$/, '')}/${this.bucket}/${fileKey}`;
+    }
+
+    // Comportamento original: AWS S3 real
     return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${fileKey}`;
   }
 

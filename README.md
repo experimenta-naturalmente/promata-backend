@@ -98,5 +98,3 @@ npx prisma migrate reset
 
 - Local: `database:5432` (dentro do Docker)
 - Host: `localhost:5432`
-
-⚠️ **Importante:** Para ambientes TST (Teste) e HLG (Homologação), entre em contato com os AGES III e IV.
