@@ -11,6 +11,7 @@ async function bootstrap() {
     'http://localhost:3002',
     'http://localhost:3001',
     'http://promata-frontend.s3-website.us-east-2.amazonaws.com',
+    'https://www.promata.com.br/'
   ];
   const corsOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
