@@ -334,7 +334,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
-      - name: Deploy container on PROD host
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy with Docker Compose
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.PROD_EC2_HOST }}
@@ -342,121 +345,66 @@ jobs:
           key: ${{ secrets.PROD_EC2_SSH_KEY }}
           script: |
             set -euo pipefail
-            IMAGE="${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}"
-            IMAGE_TAG="${{ needs.publish-prod.outputs.image_tag }}"
-            IMAGE_WITH_TAG="${IMAGE}:${IMAGE_TAG}"
-            CONTAINER="${{ secrets.PROD_DOCKER_CONTAINER_NAME }}"
-            PORTS="${{ secrets.PROD_DOCKER_PORT_MAPPING }}"
-            ENV_FILE="${{ secrets.PROD_DOCKER_ENV_FILE }}"
-            EXTRA_ARGS="${{ secrets.PROD_DOCKER_EXTRA_ARGS }}"
-            DATABASE_URL="${{ secrets.PROD_DATABASE_URL }}"
-            JWT_SECRET="${{ secrets.PROD_JWT_SECRET }}"
-            AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
-            AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-            AWS_S3_REGION="${{ vars.AWS_REGION }}"
-            AWS_S3_BUCKET="${{ secrets.PROD_AWS_S3_BUCKET }}"
-            MAIL_HOST="${{ secrets.MAIL_HOST }}"
-            MAIL_PORT="${{ secrets.MAIL_PORT }}"
-            MAIL_USER="${{ secrets.MAIL_USER }}"
-            MAIL_PASS="${{ secrets.MAIL_PASS }}"
-            MAIL_FROM="${{ secrets.MAIL_FROM }}"
-            MAIL_FROM_NAME="${{ secrets.MAIL_FROM_NAME }}"
-            FRONTEND_URL="${{ secrets.FRONTEND_URL }}"
-
-            if [ -z "${DATABASE_URL}" ]; then
-              echo "PROD_DATABASE_URL secret must be configured" >&2
-              exit 1
-            fi
-
-            if [ -z "${JWT_SECRET}" ]; then
-              echo "PROD_JWT_SECRET secret must be configured" >&2
-              exit 1
-            fi
-
-            if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
-              echo "PROD AWS credentials must be configured" >&2
-              exit 1
-            fi
-
-            if [ -z "${AWS_S3_REGION}" ] || [ -z "${AWS_S3_BUCKET}" ]; then
-              echo "PROD AWS S3 region and bucket must be configured" >&2
-              exit 1
-            fi
-
-            docker pull "${IMAGE_WITH_TAG}"
-            docker pull "${IMAGE}:latest" || true
-
-            docker stop "${CONTAINER}" || true
-            docker rm "${CONTAINER}" || true
-
-            ENV_FLAG=""
-            if [ -n "${ENV_FILE}" ]; then
-              ENV_FLAG="--env-file ${ENV_FILE}"
-            fi
-
-            EXTRA_FLAG=""
-            if [ -n "${EXTRA_ARGS}" ]; then
-              EXTRA_FLAG="${EXTRA_ARGS}"
-            fi
-
-            docker run -d \
-              --name "${CONTAINER}" \
-              -p "${PORTS}" \
-              ${ENV_FLAG} \
-              ${EXTRA_FLAG} \
-              -e DATABASE_URL="${DATABASE_URL}" \
-              -e JWT_SECRET="${JWT_SECRET}" \
-              -e AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}" \
-              -e AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}" \
-              -e AWS_S3_REGION="${AWS_S3_REGION}" \
-              -e AWS_S3_BUCKET="${AWS_S3_BUCKET}" \
-              -e MAIL_HOST="${MAIL_HOST}" \
-              -e MAIL_PORT="${MAIL_PORT}" \
-              -e MAIL_USER="${MAIL_USER}" \
-              -e MAIL_PASS="${MAIL_PASS}" \
-              -e MAIL_FROM="${MAIL_FROM}" \
-              -e MAIL_FROM_NAME="${MAIL_FROM_NAME}" \
-              -e FRONTEND_URL="${FRONTEND_URL}" \
-              ${EXTRA_FLAG} \
-              --restart always \
-              --health-cmd="curl -f http://localhost:3001/health || exit 1" \
-              --health-interval=10s \
-              --health-timeout=5s \
-              --health-retries=3 \
-              --health-start-period=40s \
-              "${IMAGE_WITH_TAG}"
-
-            # Aguardar o container ficar healthy
-            echo "Aguardando container ficar healthy..."
+            
+            # Setup directories
+            mkdir -p ~/promata-backend
+            cd ~/promata-backend
+            
+            # Pull latest code
+            git pull origin main || git clone https://github.com/${{ github.repository }}.git . || true
+            
+            # Create .env file for docker-compose
+            cat > .env.prod << 'EOF'
+            DB_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}
+            JWT_SECRET=${{ secrets.PROD_JWT_SECRET }}
+            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            AWS_S3_REGION=${{ vars.AWS_REGION }}
+            AWS_S3_BUCKET=${{ secrets.PROD_AWS_S3_BUCKET }}
+            MAIL_HOST=${{ secrets.MAIL_HOST }}
+            MAIL_PORT=${{ secrets.MAIL_PORT }}
+            MAIL_USER=${{ secrets.MAIL_USER }}
+            MAIL_PASS=${{ secrets.MAIL_PASS }}
+            MAIL_FROM=${{ secrets.MAIL_FROM }}
+            MAIL_FROM_NAME=${{ secrets.MAIL_FROM_NAME }}
+            FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+            EOF
+            
+            # Pull latest images
+            docker compose -f docker-compose.prod.yml pull
+            
+            # Stop and remove old containers
+            docker compose -f docker-compose.prod.yml down || true
+            
+            # Start services
+            docker compose -f docker-compose.prod.yml up -d
+            
+            # Wait for backend to be healthy
+            echo "Aguardando backend ficar healthy..."
             MAX_WAIT=120
             ELAPSED=0
             while [ $ELAPSED -lt $MAX_WAIT ]; do
-              HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' "${CONTAINER}" 2>/dev/null || echo "none")
-
-              if [ "$HEALTH_STATUS" = "healthy" ]; then
-                echo "✓ Container está healthy!"
+              if docker compose -f docker-compose.prod.yml exec -T backend curl -f http://localhost:3000/health > /dev/null 2>&1; then
+                echo "✓ Backend está healthy!"
                 break
-              elif [ "$HEALTH_STATUS" = "unhealthy" ]; then
-                echo "✗ Container está unhealthy. Logs:" >&2
-                docker logs --tail 50 "${CONTAINER}" >&2
-                docker stop "${CONTAINER}"
-                docker rm "${CONTAINER}"
-                exit 1
               fi
-
-              echo "Status: ${HEALTH_STATUS}, aguardando... (${ELAPSED}s/${MAX_WAIT}s)"
+              
+              echo "Aguardando... (${ELAPSED}s/${MAX_WAIT}s)"
               sleep 5
               ELAPSED=$((ELAPSED + 5))
             done
-
+            
             if [ $ELAPSED -ge $MAX_WAIT ]; then
-              echo "✗ Timeout aguardando container ficar healthy. Logs:" >&2
-              docker logs --tail 50 "${CONTAINER}" >&2
-              docker stop "${CONTAINER}"
-              docker rm "${CONTAINER}"
+              echo "✗ Timeout aguardando backend. Logs:" >&2
+              docker compose -f docker-compose.prod.yml logs backend
+              docker compose -f docker-compose.prod.yml down
               exit 1
             fi
-
-            docker exec "${CONTAINER}" npx prisma migrate deploy || true
-
+            
+            # Run migrations
+            docker compose -f docker-compose.prod.yml exec -T backend npx prisma migrate deploy || true
+            
+            # Cleanup
             docker image prune -af || true
+            
+            echo "✓ Deploy PROD concluído com sucesso!"
