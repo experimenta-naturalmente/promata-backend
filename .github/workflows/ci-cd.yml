@@ -314,6 +314,7 @@ jobs:
   manual-db-prod:
     name: Manual DB Deploy PROD
     runs-on: ubuntu-latest
+    environment: Produção
     if: |
       github.event_name == 'workflow_dispatch' &&
       github.event.inputs.deploy_db_prod == 'true'
@@ -333,6 +334,7 @@ jobs:
     name: Deploy PROD to EC2
     needs: [publish-prod]
     runs-on: ubuntu-latest
+    environment: Produção
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
