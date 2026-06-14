@@ -359,11 +359,11 @@ jobs:
             # Create .env file for docker-compose
             cat > .env << 'EOF'
             DB_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}
-            JWT_SECRET=${{ secrets.PROD_JWT_SECRET }}
-            MINIO_ROOT_USER=${{ secrets.PROD_MINIO_ROOT_USER }}
-            MINIO_ROOT_PASSWORD=${{ secrets.PROD_MINIO_ROOT_PASSWORD }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            MINIO_ROOT_USER=${{ secrets.MINIO_ROOT_USER }}
+            MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD }}
             AWS_S3_REGION=${{ vars.AWS_REGION }}
-            AWS_S3_BUCKET=${{ secrets.PROD_AWS_S3_BUCKET }}
+            AWS_S3_BUCKET=${{ secrets.AWS_S3_BUCKET }}
             AWS_S3_PUBLIC_URL=${{ secrets.AWS_S3_PUBLIC_URL }}
             MAIL_HOST=${{ secrets.MAIL_HOST }}
             MAIL_PORT=${{ secrets.MAIL_PORT }}
