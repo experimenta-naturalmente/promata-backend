@@ -11,10 +11,20 @@ async function bootstrap() {
     'http://localhost:3002',
     'http://localhost:3001',
     'http://promata-frontend.s3-website.us-east-2.amazonaws.com',
-    'https://www.promata.com.br/'
+    'https://www.promata.com.br',
+    'https://promata.com.br',
   ];
+
+  // Adiciona FRONTEND_URL (sem barra final) caso esteja configurado
+  if (process.env.FRONTEND_URL) {
+    const frontendUrl = process.env.FRONTEND_URL.replace(/\/$/, '');
+    if (!defaultOrigins.includes(frontendUrl)) {
+      defaultOrigins.push(frontendUrl);
+    }
+  }
+
   const corsOrigins = process.env.CORS_ORIGINS
-    ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
+    ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim().replace(/\/$/, ''))
     : defaultOrigins;
 
   app.enableCors({
