@@ -60,12 +60,14 @@ describe('UserService', () => {
 
   describe('deleteUser', () => {
     const validUserId = '1b7b4b0a-1e67-41af-9f0f-4a11f3e8a9f7';
+    const adminDeleter = { id: 'deleter-id', userType: UserType.ADMIN };
+    const rootDeleter = { id: 'root-deleter-id', userType: UserType.ROOT };
 
     it('should throw BadRequestException when userId is not a valid uuid', async () => {
-      await expect(service.deleteUser('invalid-id', 'other-id')).rejects.toThrow(
+      await expect(service.deleteUser('invalid-id', adminDeleter)).rejects.toThrow(
         BadRequestException,
       );
-      await expect(service.deleteUser('invalid-id', 'other-id')).rejects.toThrow(
+      await expect(service.deleteUser('invalid-id', adminDeleter)).rejects.toThrow(
         'O `id` deve vir no formato `uuid`.',
       );
 
@@ -73,10 +75,12 @@ describe('UserService', () => {
     });
 
     it('should forbid user from deleting themselves', async () => {
-      await expect(service.deleteUser(validUserId, validUserId)).rejects.toThrow(
+      const selfDeleter = { id: validUserId, userType: UserType.ADMIN };
+
+      await expect(service.deleteUser(validUserId, selfDeleter)).rejects.toThrow(
         ForbiddenException,
       );
-      await expect(service.deleteUser(validUserId, validUserId)).rejects.toThrow(
+      await expect(service.deleteUser(validUserId, selfDeleter)).rejects.toThrow(
         'Users cannot delete themselves.',
       );
 
@@ -86,21 +90,44 @@ describe('UserService', () => {
     it('should throw NotFoundException when user does not exist', async () => {
       databaseService.user.findUnique.mockResolvedValueOnce(null);
 
-      await expect(service.deleteUser(validUserId, 'deleter-id')).rejects.toThrow(
+      await expect(service.deleteUser(validUserId, adminDeleter)).rejects.toThrow(
         NotFoundException,
       );
-      await expect(service.deleteUser(validUserId, 'deleter-id')).rejects.toThrow('User not found');
+      await expect(service.deleteUser(validUserId, adminDeleter)).rejects.toThrow('User not found');
     });
 
-    it('should forbid deletion of ROOT user', async () => {
+    it('should forbid non-ROOT from deleting ROOT user', async () => {
       databaseService.user.findUnique.mockResolvedValueOnce({
         userType: UserType.ROOT,
       } as never);
 
-      const deletePromise = service.deleteUser(validUserId, 'deleter-id');
+      const deletePromise = service.deleteUser(validUserId, adminDeleter);
 
       await expect(deletePromise).rejects.toThrow(ForbiddenException);
-      await expect(deletePromise).rejects.toThrow('Root user cannot be deleted.');
+      await expect(deletePromise).rejects.toThrow('Only root users can delete another root user.');
+    });
+
+    it('should allow ROOT to delete another ROOT user', async () => {
+      const user = {
+        email: 'root@example.com',
+        document: '12345678900',
+        rg: '1234567',
+        userType: UserType.ROOT,
+      } as never;
+
+      databaseService.user.findUnique.mockResolvedValueOnce(user);
+
+      await service.deleteUser(validUserId, rootDeleter);
+
+      expect(databaseService.user.update).toHaveBeenCalledWith({
+        where: { id: validUserId },
+        data: {
+          email: `obf-${user.email}`,
+          document: `obf-${user.document}`,
+          rg: `obf-${user.rg}`,
+          active: false,
+        },
+      });
     });
 
     it('should obfuscate sensitive fields and deactivate user when deletion is allowed', async () => {
@@ -113,7 +140,7 @@ describe('UserService', () => {
 
       databaseService.user.findUnique.mockResolvedValueOnce(user);
 
-      await service.deleteUser(validUserId, 'deleter-id');
+      await service.deleteUser(validUserId, adminDeleter);
 
       expect(obfuscateService.obfuscateField).toHaveBeenCalledTimes(3);
       expect(obfuscateService.obfuscateField).toHaveBeenCalledWith(user.email);

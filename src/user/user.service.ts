@@ -11,6 +11,7 @@ import { Prisma, RequestType, UserType } from 'generated/prisma';
 import { UserSearchParamsDto, UpdateUserFormDto, UpdateUserAdminFormDto } from './user.model';
 import { ObfuscateService } from 'src/obfuscate/obfuscate.service';
 import { StorageService } from 'src/storage/storage.service';
+import type { CurrentUser } from 'src/auth/auth.model';
 
 @Injectable()
 export class UserService {
@@ -22,10 +23,10 @@ export class UserService {
     private readonly storageService: StorageService,
   ) {}
 
-  async deleteUser(userId: string, deleterId: string) {
+  async deleteUser(userId: string, deleter: CurrentUser) {
     this.verifyUserId(userId);
 
-    if (userId == deleterId) {
+    if (userId == deleter.id) {
       throw new ForbiddenException('Users cannot delete themselves.');
     }
 
@@ -38,8 +39,8 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    if (user.userType === UserType.ROOT) {
-      throw new ForbiddenException('Root user cannot be deleted.');
+    if (user.userType === UserType.ROOT && deleter.userType !== UserType.ROOT) {
+      throw new ForbiddenException('Only root users can delete another root user.');
     }
 
     await this.databaseService.user.update({

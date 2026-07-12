@@ -19,14 +19,12 @@ describe('UserController', () => {
 
   const mockUser: CurrentUser = {
     id: 'user-123',
-    email: 'test@example.com',
-    type: UserType.GUEST,
+    userType: UserType.GUEST,
   };
 
   const mockAdmin: CurrentUser = {
     id: 'admin-123',
-    email: 'admin@example.com',
-    type: UserType.ADMIN,
+    userType: UserType.ADMIN,
   };
 
   beforeEach(async () => {
@@ -56,7 +54,7 @@ describe('UserController', () => {
 
       await controller.deleteUser(mockAdmin, userId);
 
-      expect(service.deleteUser).toHaveBeenCalledWith(userId, mockAdmin.id);
+      expect(service.deleteUser).toHaveBeenCalledWith(userId, mockAdmin);
       expect(service.deleteUser).toHaveBeenCalledTimes(1);
     });
 
@@ -66,22 +64,21 @@ describe('UserController', () => {
       mockUserService.deleteUser.mockRejectedValue(new Error('Cannot delete user'));
 
       await expect(controller.deleteUser(mockAdmin, userId)).rejects.toThrow('Cannot delete user');
-      expect(service.deleteUser).toHaveBeenCalledWith(userId, mockAdmin.id);
+      expect(service.deleteUser).toHaveBeenCalledWith(userId, mockAdmin);
     });
 
-    it('should pass correct admin id when deleting', async () => {
+    it('should pass correct admin when deleting', async () => {
       const userId = 'user-to-delete-123';
       const differentAdmin: CurrentUser = {
         id: 'different-admin-456',
-        email: 'different@example.com',
-        type: UserType.ADMIN,
+        userType: UserType.ADMIN,
       };
 
       mockUserService.deleteUser.mockResolvedValue(undefined);
 
       await controller.deleteUser(differentAdmin, userId);
 
-      expect(service.deleteUser).toHaveBeenCalledWith(userId, differentAdmin.id);
+      expect(service.deleteUser).toHaveBeenCalledWith(userId, differentAdmin);
     });
   });
 

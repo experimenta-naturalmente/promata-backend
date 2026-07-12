@@ -29,7 +29,7 @@ export class UserController {
   @ApiBearerAuth('access-token')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteUser(@User() user: CurrentUser, @Param('userId') userId: string) {
-    await this.userService.deleteUser(userId, user.id);
+    await this.userService.deleteUser(userId, user);
   }
 
   @Patch(':userId')
