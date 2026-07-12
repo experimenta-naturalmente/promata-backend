@@ -4,17 +4,20 @@
  * ============================================
  * Este seed cria APENAS o usuário ROOT inicial
  * para entrega ao cliente.
- * 
- * Credenciais padrão:
- *   Email: augusto.alvim@pucrs.br
- *   Senha: ProMata2025!
- * 
+ *
+ * Variáveis de ambiente obrigatórias:
+ *   ROOT_EMAIL
+ *   ROOT_PASSWORD
+ *   ROOT_NAME (opcional)
+ *   ROOT_PHONE (opcional)
+ *
  * IMPORTANTE: Alterar a senha no primeiro login!
  * ============================================
  */
 
 const { PrismaClient, UserType } = require('../generated/prisma');
 const argon2 = require('argon2');
+const crypto = require('crypto');
 
 const prisma = new PrismaClient();
 
@@ -23,9 +26,21 @@ async function main() {
   console.log('PRO-MATA - Seed de Produção');
   console.log('============================================');
 
-  // Verificar se já existe usuário ROOT
+  const rootEmail = process.env.ROOT_EMAIL;
+  const rootPassword = process.env.ROOT_PASSWORD;
+  const rootName = process.env.ROOT_NAME || 'Root Admin';
+  const rootPhone = process.env.ROOT_PHONE || '(00) 00000-0000';
+
+  if (!rootEmail || !rootPassword) {
+    throw new Error('ROOT_EMAIL e ROOT_PASSWORD são obrigatórios para o seed de produção.');
+  }
+
+  if (rootPassword.length < 12) {
+    throw new Error('ROOT_PASSWORD deve ter pelo menos 12 caracteres.');
+  }
+
   const existingRoot = await prisma.user.findFirst({
-    where: { userType: UserType.ROOT }
+    where: { userType: UserType.ROOT },
   });
 
   if (existingRoot) {
@@ -35,12 +50,7 @@ async function main() {
     return;
   }
 
-  // Criar hash da senha padrão
-  // O frontend envia o hash SHA-256 da senha, então precisamos fazer
-  // argon2 hash do SHA-256 hash para que a verificação funcione
-  const defaultPassword = 'ProMata2025!';
-  const crypto = require('crypto');
-  const sha256Hash = crypto.createHash('sha256').update(defaultPassword).digest('hex');
+  const sha256Hash = crypto.createHash('sha256').update(rootPassword).digest('hex');
   const hashedPassword = await argon2.hash(sha256Hash, {
     type: argon2.argon2id,
     memoryCost: 65536,
@@ -48,19 +58,18 @@ async function main() {
     parallelism: 4,
   });
 
-  // Criar usuário ROOT
   const rootUser = await prisma.user.create({
     data: {
       userType: UserType.ROOT,
-      name: 'Augusto Mussi Alvim',
-      email: 'augusto.alvim@pucrs.br',
+      name: rootName,
+      email: rootEmail,
       password: hashedPassword,
-      phone: '(51) 99999-0000',
+      phone: rootPhone,
       gender: 'M',
       isForeign: false,
       active: true,
       verified: true,
-      isFirstAccess: true, // Forçar troca de senha no primeiro login
+      isFirstAccess: true,
     },
   });
 
@@ -68,7 +77,7 @@ async function main() {
   console.log('============================================');
   console.log('Credenciais de acesso:');
   console.log(`  Email: ${rootUser.email}`);
-  console.log(`  Senha: ${defaultPassword}`);
+  console.log('  Senha: (definida via ROOT_PASSWORD — não exibida)');
   console.log('============================================');
   console.log('⚠️  IMPORTANTE: Altere a senha no primeiro login!');
   console.log('============================================');
@@ -79,7 +88,7 @@ main()
     await prisma.$disconnect();
   })
   .catch(async (e) => {
-    console.error('Erro ao executar seed de produção:', e);
+    console.error(e);
     await prisma.$disconnect();
     process.exit(1);
   });

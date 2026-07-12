@@ -19,6 +19,7 @@ import { UserSearchParamsDto, UpdateUserFormDto, UpdateUserAdminFormDto } from '
 import { User } from './user.decorator';
 import type { CurrentUser } from 'src/auth/auth.model';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { DOCUMENT_UPLOAD } from 'src/common/upload.options';
 
 @Controller('user')
 export class UserController {
@@ -44,6 +45,8 @@ export class UserController {
   }
 
   @Get(':userId')
+  @Roles(UserType.ADMIN)
+  @ApiBearerAuth('access-token')
   async getAdmin(@Param('userId') userId: string) {
     return await this.userService.getUser(userId);
   }
@@ -52,7 +55,7 @@ export class UserController {
   @Roles(UserType.GUEST, UserType.ADMIN)
   @ApiBearerAuth('access-token')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @UseInterceptors(FileInterceptor('teacherDocument'))
+  @UseInterceptors(FileInterceptor('teacherDocument', DOCUMENT_UPLOAD))
   @ApiConsumes('multipart/form-data')
   async updateUser(
     @User() user: CurrentUser,

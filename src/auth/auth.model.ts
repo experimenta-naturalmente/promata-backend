@@ -68,7 +68,7 @@ export const CreateRootUserSchema = z.object({
   document: z.string().optional(),
   rg: z.string().optional(),
   country: z.string(),
-  userType: z.enum(Object.values(UserType)),
+  userType: z.enum([UserType.GUEST, UserType.PROFESSOR, UserType.ADMIN]),
   institution: z.string().optional(),
   isForeign: z.boolean(),
   addressLine: z.string().optional(),

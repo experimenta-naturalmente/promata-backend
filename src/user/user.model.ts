@@ -10,7 +10,6 @@ export const UpdateUserFormSchema = z.object({
   rg: z.string().nullable().optional(),
   gender: z.enum(['Masculino', 'Feminino', 'Outro']).optional(),
   zipCode: z.string().optional(),
-  userType: z.enum([UserType.GUEST, UserType.PROFESSOR, UserType.ADMIN]).optional(),
   city: z.string().nullable().optional(),
   country: z.string().optional(),
   addressLine: z.string().nullable().optional(),

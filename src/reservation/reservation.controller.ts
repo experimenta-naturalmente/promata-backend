@@ -25,7 +25,6 @@ import {
 import { User } from 'src/user/user.decorator';
 import { type CurrentUser } from 'src/auth/auth.model';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { DOCUMENT_UPLOAD } from 'src/common/upload.options';
 
 @Controller('reservation/group')
 export class ReservationController {
@@ -82,7 +81,7 @@ export class ReservationController {
     description: 'Comprovante anexado e solicitação de aprovação criada com sucesso.',
   })
   @Roles(UserType.GUEST)
-  @UseInterceptors(FileInterceptor('paymentReceipt', DOCUMENT_UPLOAD))
+  @UseInterceptors(FileInterceptor('paymentReceipt'))
   @ApiConsumes('multipart/form-data')
   async attachReceiptAndRequestApproval(
     @User() user: CurrentUser,

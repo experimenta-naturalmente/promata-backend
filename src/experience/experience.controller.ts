@@ -16,6 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes } from '@nestjs/swagger';
 import { ExperienceService } from './experience.service';
 import { Roles } from 'src/auth/role/roles.decorator';
+import { Public } from 'src/auth/role/public.decorator';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { UserType } from 'generated/prisma';
 import {
@@ -24,6 +25,7 @@ import {
   UpdateExperienceFormDto,
   GetExperienceFilterDto,
 } from './experience.model';
+import { IMAGE_UPLOAD } from 'src/common/upload.options';
 
 @Controller('experience')
 export class ExperienceController {
@@ -53,7 +55,7 @@ export class ExperienceController {
   @Roles(UserType.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('image'))
+  @UseInterceptors(FileInterceptor('image', IMAGE_UPLOAD))
   @HttpCode(HttpStatus.NO_CONTENT)
   async updateExperienceAsAdmin(
     @Param('experienceId') experienceId: string,
@@ -75,7 +77,7 @@ export class ExperienceController {
   @Roles(UserType.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('image'))
+  @UseInterceptors(FileInterceptor('image', IMAGE_UPLOAD))
   @HttpCode(HttpStatus.CREATED)
   async createExperienceAsAdmin(
     @Body() createExperienceDto: CreateExperienceFormDto,
@@ -84,12 +86,14 @@ export class ExperienceController {
     return await this.experienceService.createExperience(createExperienceDto, file);
   }
 
+  @Public()
   @Get('search')
   @HttpCode(HttpStatus.OK)
   async getExperienceFilter(@Query() getExperienceFilterDto: GetExperienceFilterDto) {
     return await this.experienceService.getExperienceFilter(getExperienceFilterDto);
   }
 
+  @Public()
   @Get(':experienceId')
   @HttpCode(HttpStatus.OK)
   async getExperience(@Param('experienceId') experienceId: string) {

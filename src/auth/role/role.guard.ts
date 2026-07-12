@@ -5,6 +5,7 @@ import { AuthGuard } from '../auth.guard';
 import { UserType } from 'generated/prisma';
 import { Request } from 'express';
 import { CurrentUser } from '../auth.model';
+import { IS_PUBLIC_KEY } from './public.decorator';
 
 @Injectable()
 export class RoleGuard implements CanActivate {
@@ -14,10 +15,19 @@ export class RoleGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (isPublic) {
+      return true;
+    }
+
     const roles = this.reflector.get<UserType[]>('roles', context.getHandler());
 
-    if (!roles) {
-      return true;
+    if (!roles?.length) {
+      return false;
     }
 
     if (!(await this.authGuard.canActivate(context))) {

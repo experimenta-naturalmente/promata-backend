@@ -116,7 +116,7 @@ describe('AuthGuard', () => {
 
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(UnauthorizedException);
     expect(jwtService.verifyAsync).toHaveBeenCalledWith(token, { secret: 'super-secret' });
-    expect(errorSpy).toHaveBeenCalledWith(`Invalid token: ${token}`);
+    expect(errorSpy).toHaveBeenCalledWith('Invalid token');
   });
 
   it('throws Unauthorized("Invalid token payload") when schema validation fails', async () => {

@@ -21,6 +21,7 @@ import { ReservationService } from './reservation/reservation.service';
 import { RoleGuard } from './auth/role/role.guard';
 import { DatabaseExceptionFilter } from './database/database.filter';
 import { ZodValidationPipe } from 'nestjs-zod';
+import { ThrottlerGuard } from '@nestjs/throttler';
 
 describe('AppModule', () => {
   it('should be defined', () => {
@@ -61,6 +62,7 @@ describe('AppModule', () => {
 
     expect(providers).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ provide: expect.anything(), useClass: ThrottlerGuard }),
         expect.objectContaining({ provide: expect.anything(), useClass: RoleGuard }),
         expect.objectContaining({ provide: expect.anything(), useClass: ZodValidationPipe }),
         expect.objectContaining({ provide: expect.anything(), useClass: DatabaseExceptionFilter }),

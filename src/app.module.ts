@@ -21,6 +21,7 @@ import { MailModule } from './mail/mail.module';
 import { RequestsModule } from './requests/requests.module';
 import { ProfessorModule } from './professor/professor.module';
 import { StorageModule } from './storage/storage.module';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
@@ -29,6 +30,13 @@ import { StorageModule } from './storage/storage.module';
       isGlobal: true,
       expandVariables: true,
     }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 100,
+      },
+    ]),
     JwtModule,
     AuthModule,
     AnalyticsModule,
@@ -45,6 +53,10 @@ import { StorageModule } from './storage/storage.module';
   controllers: [AppController, ReservationController],
   providers: [
     AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: RoleGuard,

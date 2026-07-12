@@ -14,7 +14,6 @@ describe('User model Zod schemas', () => {
         rg: '1234567',
         gender: 'Masculino',
         zipCode: '12345-678',
-        userType: UserType.ADMIN,
         city: 'Porto Alegre',
         country: 'BR',
         addressLine: 'Main St',
@@ -25,9 +24,19 @@ describe('User model Zod schemas', () => {
 
       expect(result.name).toBe('John Doe');
       expect(result.email).toBe('john@example.com');
-      expect(result.userType).toBe(UserType.ADMIN);
+      expect(result).not.toHaveProperty('userType');
       expect(result.number).toBe(10);
       expect(result.isForeign).toBe(true);
+    });
+
+    it('should strip userType from self-update payload', () => {
+      const result = UpdateUserFormSchema.parse({
+        name: 'John Doe',
+        userType: UserType.ADMIN,
+      } as any);
+
+      expect(result.name).toBe('John Doe');
+      expect(result).not.toHaveProperty('userType');
     });
 
     it('should handle null number and nullable fields correctly', () => {

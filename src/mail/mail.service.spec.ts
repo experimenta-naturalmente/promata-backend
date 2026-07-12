@@ -111,7 +111,7 @@ describe('MailService', () => {
       await service.sendTemplateMail(to, subject, templateName, context);
 
       expect(readFileSyncMock).toHaveBeenCalledWith(
-        'dist/src/mail/templates/welcome-email.hbs',
+        expect.stringMatching(/dist[/\\]src[/\\]mail[/\\]templates[/\\]welcome-email\.hbs$/),
         'utf-8',
       );
 

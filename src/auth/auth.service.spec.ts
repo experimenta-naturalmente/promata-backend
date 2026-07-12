@@ -231,6 +231,7 @@ describe('AuthService', () => {
         id: 'user-1',
         password: 'hash',
         isFirstAccess: false,
+        active: true,
       } as never);
 
       const verifySpy = jest.spyOn(service, 'verifyPassword').mockResolvedValue(false);
@@ -243,11 +244,24 @@ describe('AuthService', () => {
       expect(verifySpy).toHaveBeenCalledWith('hash', loginDto.password);
     });
 
+    it('should throw UnauthorizedException when account is inactive', async () => {
+      databaseService.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        password: 'hash',
+        isFirstAccess: false,
+        active: false,
+      } as never);
+
+      await expect(service.signIn(loginDto)).rejects.toThrow(UnauthorizedException);
+      await expect(service.signIn(loginDto)).rejects.toThrow('Conta desativada.');
+    });
+
     it('should return reset token when first access', async () => {
       databaseService.user.findUnique.mockResolvedValueOnce({
         id: 'user-1',
         password: 'hash',
         isFirstAccess: true,
+        active: true,
       } as never);
 
       jest.spyOn(service, 'verifyPassword').mockResolvedValueOnce(true);
@@ -265,6 +279,7 @@ describe('AuthService', () => {
         id: 'user-1',
         password: 'hash',
         isFirstAccess: false,
+        active: true,
       } as never);
 
       jest.spyOn(service, 'verifyPassword').mockResolvedValueOnce(true);
@@ -274,7 +289,7 @@ describe('AuthService', () => {
 
       expect(jwtService.signAsync).toHaveBeenCalledWith(
         { sub: 'user-1' },
-        { secret: 'jwt-secret' },
+        { secret: 'jwt-secret', expiresIn: '8h' },
       );
       expect(result).toEqual({ token: 'jwt-token', isFirstAccess: false });
     });

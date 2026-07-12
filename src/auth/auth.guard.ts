@@ -41,7 +41,7 @@ export class AuthGuard implements CanActivate {
         secret: this.jwtSecretKey,
       });
     } catch {
-      this.logger.error(`Invalid token: ${token}`);
+      this.logger.error('Invalid token');
       throw new UnauthorizedException();
     }
 

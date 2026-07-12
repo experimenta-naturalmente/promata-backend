@@ -15,15 +15,18 @@ import {
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { UserType } from 'generated/prisma';
 import { Roles } from 'src/auth/role/roles.decorator';
+import { Public } from 'src/auth/role/public.decorator';
 import { HighlightService } from './highlight.service';
 import { CreateHighlightDto, HighlightQueryParamsDto, UpdateHighlightDto } from './highlight.model';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { IMAGE_UPLOAD } from 'src/common/upload.options';
 
 @ApiTags('highlights')
 @Controller('highlights')
 export class HighlightController {
   constructor(private readonly highlightService: HighlightService) {}
 
+  @Public()
   @Get('public/grouped')
   @HttpCode(HttpStatus.OK)
   async findPublicGrouped() {
@@ -58,7 +61,7 @@ export class HighlightController {
   @Roles(UserType.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('image'))
+  @UseInterceptors(FileInterceptor('image', IMAGE_UPLOAD))
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Body() createDto: CreateHighlightDto,
@@ -71,7 +74,7 @@ export class HighlightController {
   @Roles(UserType.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('image'))
+  @UseInterceptors(FileInterceptor('image', IMAGE_UPLOAD))
   @HttpCode(HttpStatus.OK)
   async update(
     @Param('id') id: string,

@@ -9,6 +9,8 @@ jest.mock('@nestjs/core', () => ({
   },
 }));
 
+jest.mock('helmet', () => jest.fn(() => 'helmet-middleware'));
+
 jest.mock('@nestjs/swagger', () => ({
   DocumentBuilder: jest.fn().mockImplementation(() => ({
     setTitle: jest.fn().mockReturnThis(),
@@ -30,8 +32,35 @@ jest.mock('@nestjs/swagger', () => ({
 describe('bootstrap (main.ts)', () => {
   const originalEnv = process.env;
 
+  const createMockApp = () => ({
+    use: jest.fn(),
+    useBodyParser: jest.fn(),
+    enableCors: jest.fn(),
+    listen: jest.fn().mockResolvedValue(undefined),
+  });
+
+  const loadMain = async (mockApp: ReturnType<typeof createMockApp>) => {
+    (NestFactory.create as jest.Mock).mockResolvedValue(mockApp);
+
+    await new Promise<void>((resolve, reject) => {
+      try {
+        jest.isolateModules(() => {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          require('./main');
+        });
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    // bootstrap() is async
+    await new Promise((r) => setImmediate(r));
+  };
+
   beforeEach(() => {
     process.env = { ...originalEnv };
+    delete process.env.NODE_ENV;
     jest.clearAllMocks();
   });
 
@@ -39,22 +68,15 @@ describe('bootstrap (main.ts)', () => {
     process.env = originalEnv;
   });
 
-  it('should configure CORS, setup Swagger and start listening', async () => {
-    const mockApp: any = {
-      enableCors: jest.fn(),
-      listen: jest.fn().mockResolvedValue(undefined),
-    };
-
-    (NestFactory.create as jest.Mock).mockResolvedValue(mockApp);
-
+  it('should configure CORS, helmet, Swagger and start listening outside production', async () => {
+    const mockApp = createMockApp();
     process.env.PORT = '4000';
 
-    // require main.ts so that bootstrap runs, then wait a microtask tick
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    require('./main');
-    await Promise.resolve();
+    await loadMain(mockApp);
 
     expect(NestFactory.create).toHaveBeenCalled();
+    expect(mockApp.use).toHaveBeenCalled();
+    expect(mockApp.useBodyParser).toHaveBeenCalled();
 
     expect(mockApp.enableCors).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -66,7 +88,17 @@ describe('bootstrap (main.ts)', () => {
     );
 
     expect(mockApp.listen).toHaveBeenCalledWith('4000');
-
     expect(SwaggerModule.setup).toHaveBeenCalledWith('api', mockApp, expect.any(Function));
+  });
+
+  it('should not setup Swagger in production', async () => {
+    const mockApp = createMockApp();
+    process.env.NODE_ENV = 'production';
+    process.env.PORT = '4000';
+
+    await loadMain(mockApp);
+
+    expect(SwaggerModule.setup).not.toHaveBeenCalled();
+    expect(mockApp.listen).toHaveBeenCalledWith('4000');
   });
 });

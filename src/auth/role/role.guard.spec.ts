@@ -3,6 +3,7 @@ import { RoleGuard } from './role.guard';
 import { ExecutionContext } from '@nestjs/common';
 import { UserType } from 'generated/prisma';
 import { AuthGuard } from '../auth.guard';
+import { IS_PUBLIC_KEY } from './public.decorator';
 
 describe('RoleGuard', () => {
   let reflector: Reflector;
@@ -17,6 +18,7 @@ describe('RoleGuard', () => {
         getRequest: () => req,
       }),
       getHandler: () => ({}),
+      getClass: () => ({}),
     } as ExecutionContext;
 
     return context;
@@ -25,6 +27,7 @@ describe('RoleGuard', () => {
   beforeEach(() => {
     reflector = {
       get: jest.fn(),
+      getAllAndOverride: jest.fn().mockReturnValue(false),
     } as unknown as Reflector;
 
     authGuard = {
@@ -34,15 +37,27 @@ describe('RoleGuard', () => {
     guard = new RoleGuard(reflector, authGuard);
   });
 
-  it('deve permitir quando não há metadata de roles (roles = undefined)', async () => {
+  it('deve negar quando não há metadata de roles (default deny)', async () => {
     (reflector.get as jest.Mock).mockReturnValue(undefined);
 
     const ctx = makeExecutionContext(UserType.GUEST);
     const result = await guard.canActivate(ctx);
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(reflector.get).toHaveBeenCalledWith('roles', ctx.getHandler());
+    expect(reflector.getAllAndOverride).toHaveBeenCalledWith(IS_PUBLIC_KEY, [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]);
+    expect(result).toBe(false);
+  });
+
+  it('deve permitir rotas marcadas como @Public()', async () => {
+    (reflector.getAllAndOverride as jest.Mock).mockReturnValue(true);
+
+    const ctx = makeExecutionContext();
+    const result = await guard.canActivate(ctx);
+
     expect(result).toBe(true);
+    expect(reflector.get).not.toHaveBeenCalled();
   });
 
   it('deve permitir quando o usuário possui um dos papéis requeridos', async () => {
@@ -57,7 +72,7 @@ describe('RoleGuard', () => {
     expect(result).toBe(true);
   });
 
-  it('deve permitir quando o usuário não possui um dos papéis requeridos', async () => {
+  it('deve negar quando o usuário não possui um dos papéis requeridos', async () => {
     (reflector.get as jest.Mock).mockReturnValue([
       UserType.PROFESSOR,
       UserType.ADMIN,

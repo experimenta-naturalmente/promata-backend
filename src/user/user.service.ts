@@ -72,6 +72,11 @@ export class UserService {
       url = uploadedFile.url;
     }
 
+    const adminUpdate =
+      'userType' in updateUserDto
+        ? (updateUserDto as UpdateUserAdminFormDto)
+        : null;
+
     const user = await this.databaseService.user.update({
       where: { id: userId, userType: { not: UserType.ROOT } },
       data: {
@@ -81,7 +86,7 @@ export class UserService {
         document: updateUserDto.document,
         gender: updateUserDto.gender,
         rg: updateUserDto.rg,
-        userType: updateUserDto.userType,
+        userType: adminUpdate?.userType,
         institution: updateUserDto.institution,
         isForeign: updateUserDto.isForeign,
         verified: url ? false : undefined,

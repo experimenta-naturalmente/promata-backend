@@ -93,11 +93,15 @@ export class AuthService {
   async signIn(dto: LoginDto) {
     const user = await this.databaseService.user.findUnique({
       where: { email: dto.email },
-      select: { id: true, password: true, isFirstAccess: true },
+      select: { id: true, password: true, isFirstAccess: true, active: true },
     });
 
     if (!user) {
       throw new BadRequestException('Nenhum usuário encontrado com esse email.');
+    }
+
+    if (!user.active) {
+      throw new UnauthorizedException('Conta desativada.');
     }
 
     if (await this.verifyPassword(user.password, dto.password)) {
@@ -112,6 +116,7 @@ export class AuthService {
 
       const token = await this.jwtService.signAsync(payload, {
         secret: this.configService.get('JWT_SECRET'),
+        expiresIn: (this.configService.get<string>('JWT_EXPIRES_IN') ?? '8h') as `${number}h`,
       });
 
       return { token, isFirstAccess: user.isFirstAccess };
