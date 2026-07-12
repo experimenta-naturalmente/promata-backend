@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ReservationService } from './reservation.service';
 import { DatabaseService } from '../database/database.service';
@@ -73,7 +73,17 @@ describe('ReservationService', () => {
       expect(databaseService.requests.create).not.toHaveBeenCalled();
     });
 
+    it('should throw ForbiddenException when user does not own the reservation group', async () => {
+      databaseService.reservationGroup.findUnique.mockResolvedValueOnce({ userId: 'other-user' });
+
+      await expect(service.createDocumentRequest('rg-1', 'user-1', mockFile)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(storageService.uploadFile).not.toHaveBeenCalled();
+    });
+
     it('should upload file and create PAYMENT_SENT request', async () => {
+      databaseService.reservationGroup.findUnique.mockResolvedValueOnce({ userId: 'user-1' });
       storageService.uploadFile.mockResolvedValueOnce({ url: 'https://s3.test/payments/1.pdf' });
 
       const createdRequest = { id: 'req-1' };
@@ -102,6 +112,7 @@ describe('ReservationService', () => {
 
   describe('createCancelRequest', () => {
     it('should create CANCELED_REQUESTED request', async () => {
+      databaseService.reservationGroup.findUnique.mockResolvedValueOnce({ userId: 'user-1' });
       databaseService.requests.create.mockResolvedValueOnce({} as never);
 
       await service.createCancelRequest('rg-1', 'user-1');
@@ -549,6 +560,62 @@ describe('ReservationService', () => {
 
       await expect(promise).rejects.toThrow(BadRequestException);
       await expect(promise).rejects.toThrow('Uma ou mais experiências não estão ativas.');
+    });
+  });
+
+  describe('deleteReservationGroup', () => {
+    it('should throw NotFoundException when reservation group does not exist', async () => {
+      databaseService.reservationGroup.findUnique.mockResolvedValue(null);
+
+      await expect(service.deleteReservationGroup('rg-unknown', 'root-1')).rejects.toThrow(
+        NotFoundException,
+      );
+      await expect(service.deleteReservationGroup('rg-unknown', 'root-1')).rejects.toThrow(
+        'Reservation group not found',
+      );
+      expect(databaseService.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException when reservation group is already inactive', async () => {
+      databaseService.reservationGroup.findUnique.mockResolvedValueOnce({
+        id: 'rg-1',
+        active: false,
+      });
+
+      await expect(service.deleteReservationGroup('rg-1', 'root-1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(databaseService.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('should soft-delete reservation group and create canceled request', async () => {
+      databaseService.reservationGroup.findUnique.mockResolvedValueOnce({
+        id: 'rg-1',
+        active: true,
+      });
+      databaseService.requests.create.mockResolvedValueOnce({ id: 'req-1' });
+      databaseService.reservationGroup.update.mockResolvedValueOnce({ id: 'rg-1', active: false });
+      databaseService.$transaction.mockResolvedValueOnce([]);
+
+      await service.deleteReservationGroup('rg-1', 'root-1');
+
+      expect(databaseService.reservationGroup.findUnique).toHaveBeenCalledWith({
+        where: { id: 'rg-1' },
+        select: { id: true, active: true },
+      });
+      expect(databaseService.$transaction).toHaveBeenCalledTimes(1);
+      expect(databaseService.requests.create).toHaveBeenCalledWith({
+        data: {
+          type: RequestType.CANCELED,
+          reservationGroupId: 'rg-1',
+          createdByUserId: 'root-1',
+          description: 'Reserva excluída por usuário root',
+        },
+      });
+      expect(databaseService.reservationGroup.update).toHaveBeenCalledWith({
+        where: { id: 'rg-1' },
+        data: { active: false },
+      });
     });
   });
 });

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -24,6 +25,7 @@ import {
 import { User } from 'src/user/user.decorator';
 import { type CurrentUser } from 'src/auth/auth.model';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { DOCUMENT_UPLOAD } from 'src/common/upload.options';
 
 @Controller('reservation/group')
 export class ReservationController {
@@ -80,7 +82,7 @@ export class ReservationController {
     description: 'Comprovante anexado e solicitação de aprovação criada com sucesso.',
   })
   @Roles(UserType.GUEST)
-  @UseInterceptors(FileInterceptor('paymentReceipt'))
+  @UseInterceptors(FileInterceptor('paymentReceipt', DOCUMENT_UPLOAD))
   @ApiConsumes('multipart/form-data')
   async attachReceiptAndRequestApproval(
     @User() user: CurrentUser,
@@ -138,5 +140,16 @@ export class ReservationController {
   @ApiBearerAuth('access-token')
   async getAllReservationGroups(@Query() searchParams: ReservationSearchParamsDto) {
     return await this.reservationService.getAllReservationGroups(searchParams);
+  }
+
+  @Delete(':reservationGroupId')
+  @Roles(UserType.ROOT)
+  @ApiBearerAuth('access-token')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteReservationGroup(
+    @User() user: CurrentUser,
+    @Param('reservationGroupId') reservationGroupId: string,
+  ) {
+    await this.reservationService.deleteReservationGroup(reservationGroupId, user.id);
   }
 }

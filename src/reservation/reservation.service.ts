@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -139,6 +140,8 @@ export class ReservationService {
       throw new BadRequestException('`paymentReceipt` not provided');
     }
 
+    await this.assertReservationGroupOwnership(reservationGroupId, userId);
+
     const { url } = await this.storageService.uploadFile(paymentReceipt, {
       directory: 'payments',
       contentType: paymentReceipt.mimetype,
@@ -158,6 +161,8 @@ export class ReservationService {
   }
 
   async createCancelRequest(reservationGroupId: string, userId: string) {
+    await this.assertReservationGroupOwnership(reservationGroupId, userId);
+
     await this.databaseService.requests.create({
       data: {
         type: RequestType.CANCELED_REQUESTED,
@@ -167,10 +172,26 @@ export class ReservationService {
     });
   }
 
+  private async assertReservationGroupOwnership(reservationGroupId: string, userId: string) {
+    const group = await this.databaseService.reservationGroup.findUnique({
+      where: { id: reservationGroupId },
+      select: { userId: true },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Reservation group not found');
+    }
+
+    if (group.userId !== userId) {
+      throw new ForbiddenException('Você não tem permissão para alterar esta reserva.');
+    }
+  }
+
   async getReservationGroups(userId: string, filter: ReservationGroupStatusFilterDto) {
     const reservationGroup = await this.databaseService.reservationGroup.findMany({
       where: {
         userId: userId,
+        active: true,
         requests: {
           some: {},
         },
@@ -506,6 +527,32 @@ export class ReservationService {
             },
           },
         },
+      }),
+    ]);
+  }
+
+  async deleteReservationGroup(reservationGroupId: string, rootUserId: string) {
+    const reservationGroup = await this.databaseService.reservationGroup.findUnique({
+      where: { id: reservationGroupId },
+      select: { id: true, active: true },
+    });
+
+    if (!reservationGroup || !reservationGroup.active) {
+      throw new NotFoundException('Reservation group not found');
+    }
+
+    await this.databaseService.$transaction([
+      this.databaseService.requests.create({
+        data: {
+          type: RequestType.CANCELED,
+          reservationGroupId,
+          createdByUserId: rootUserId,
+          description: 'Reserva excluída por usuário root',
+        },
+      }),
+      this.databaseService.reservationGroup.update({
+        where: { id: reservationGroupId },
+        data: { active: false },
       }),
     ]);
   }

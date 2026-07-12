@@ -27,6 +27,7 @@ describe('ReservationController', () => {
       createCancelRequest: jest.fn(),
       updateReservationByAdmin: jest.fn(),
       getAllReservationGroups: jest.fn(),
+      deleteReservationGroup: jest.fn(),
     } as unknown as jest.Mocked<ReservationService>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -211,6 +212,32 @@ describe('ReservationController', () => {
 
       expect(service.getAllReservationGroups).toHaveBeenCalledWith(searchParams);
       expect(result).toEqual(expectedResult);
+    });
+  });
+
+  describe('deleteReservationGroup', () => {
+    it('should call service.deleteReservationGroup with reservationGroupId and user id', async () => {
+      const currentUser = { id: 'root-1' } as any;
+      const reservationGroupId = 'rg-1';
+
+      service.deleteReservationGroup.mockResolvedValueOnce(undefined as never);
+
+      await controller.deleteReservationGroup(currentUser, reservationGroupId);
+
+      expect(service.deleteReservationGroup).toHaveBeenCalledWith(reservationGroupId, currentUser.id);
+      expect(service.deleteReservationGroup).toHaveBeenCalledTimes(1);
+    });
+
+    it('should propagate errors from service.deleteReservationGroup', async () => {
+      const currentUser = { id: 'root-1' } as any;
+      const reservationGroupId = 'rg-unknown';
+
+      service.deleteReservationGroup.mockRejectedValueOnce(new Error('Reservation group not found'));
+
+      await expect(
+        controller.deleteReservationGroup(currentUser, reservationGroupId),
+      ).rejects.toThrow('Reservation group not found');
+      expect(service.deleteReservationGroup).toHaveBeenCalledWith(reservationGroupId, currentUser.id);
     });
   });
 });
