@@ -550,6 +550,10 @@ export class ReservationService {
           description: 'Reserva excluída por usuário root',
         },
       }),
+      this.databaseService.reservation.updateMany({
+        where: { reservationGroupId },
+        data: { active: false },
+      }),
       this.databaseService.reservationGroup.update({
         where: { id: reservationGroupId },
         data: { active: false },

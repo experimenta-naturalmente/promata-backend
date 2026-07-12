@@ -59,7 +59,11 @@ export class ExperienceService {
     }
 
     const reservationCount = await this.databaseService.reservation.count({
-      where: { experienceId },
+      where: {
+        experienceId,
+        active: true,
+        ReservationGroup: { active: true },
+      },
     });
 
     if (reservationCount > 0) {

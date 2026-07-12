@@ -81,7 +81,11 @@ describe('ExperienceService', () => {
       });
 
       expect(databaseService.reservation.count).toHaveBeenCalledWith({
-        where: { experienceId },
+        where: {
+          experienceId,
+          active: true,
+          ReservationGroup: { active: true },
+        },
       });
 
       expect(databaseService.experience.delete).toHaveBeenCalledWith({

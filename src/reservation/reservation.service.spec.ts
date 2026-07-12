@@ -33,6 +33,7 @@ describe('ReservationService', () => {
       reservation: {
         findUnique: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
       },
       member: {
         deleteMany: jest.fn(),
@@ -594,6 +595,7 @@ describe('ReservationService', () => {
         active: true,
       });
       databaseService.requests.create.mockResolvedValueOnce({ id: 'req-1' });
+      databaseService.reservation.updateMany.mockResolvedValueOnce({ count: 1 });
       databaseService.reservationGroup.update.mockResolvedValueOnce({ id: 'rg-1', active: false });
       databaseService.$transaction.mockResolvedValueOnce([]);
 
@@ -611,6 +613,10 @@ describe('ReservationService', () => {
           createdByUserId: 'root-1',
           description: 'Reserva excluída por usuário root',
         },
+      });
+      expect(databaseService.reservation.updateMany).toHaveBeenCalledWith({
+        where: { reservationGroupId: 'rg-1' },
+        data: { active: false },
       });
       expect(databaseService.reservationGroup.update).toHaveBeenCalledWith({
         where: { id: 'rg-1' },
