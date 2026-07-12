@@ -5,7 +5,8 @@
  * Este seed cria APENAS o usuário ROOT inicial
  * para entrega ao cliente.
  *
- * Variáveis de ambiente obrigatórias:
+ * Variáveis de ambiente (obrigatórias só se ainda
+ * não existir nenhum ROOT):
  *   ROOT_EMAIL
  *   ROOT_PASSWORD
  *   ROOT_NAME (opcional)
@@ -26,19 +27,6 @@ async function main() {
   console.log('PRO-MATA - Seed de Produção');
   console.log('============================================');
 
-  const rootEmail = process.env.ROOT_EMAIL;
-  const rootPassword = process.env.ROOT_PASSWORD;
-  const rootName = process.env.ROOT_NAME || 'Root Admin';
-  const rootPhone = process.env.ROOT_PHONE || '(00) 00000-0000';
-
-  if (!rootEmail || !rootPassword) {
-    throw new Error('ROOT_EMAIL e ROOT_PASSWORD são obrigatórios para o seed de produção.');
-  }
-
-  if (rootPassword.length < 12) {
-    throw new Error('ROOT_PASSWORD deve ter pelo menos 12 caracteres.');
-  }
-
   const existingRoot = await prisma.user.findFirst({
     where: { userType: UserType.ROOT },
   });
@@ -48,6 +36,23 @@ async function main() {
     console.log(`  Email: ${existingRoot.email}`);
     console.log('============================================');
     return;
+  }
+
+  const rootEmail = process.env.ROOT_EMAIL;
+  const rootPassword = process.env.ROOT_PASSWORD;
+  const rootName = process.env.ROOT_NAME || 'Root Admin';
+  const rootPhone = process.env.ROOT_PHONE || '(00) 00000-0000';
+
+  if (!rootEmail || !rootPassword) {
+    console.log('⚠ Nenhum ROOT encontrado e ROOT_EMAIL/ROOT_PASSWORD não definidos.');
+    console.log('  Seed ignorado — a API vai iniciar normalmente.');
+    console.log('  Para criar o ROOT no próximo boot, defina essas variáveis no .env.');
+    console.log('============================================');
+    return;
+  }
+
+  if (rootPassword.length < 12) {
+    throw new Error('ROOT_PASSWORD deve ter pelo menos 12 caracteres.');
   }
 
   const sha256Hash = crypto.createHash('sha256').update(rootPassword).digest('hex');

@@ -76,6 +76,11 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-senha_super_segura_123}@postgres:5432/promata_db
       JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      ROOT_EMAIL: ${ROOT_EMAIL:-}
+      ROOT_PASSWORD: ${ROOT_PASSWORD:-}
+      ROOT_NAME: ${ROOT_NAME:-}
+      ROOT_PHONE: ${ROOT_PHONE:-}
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       AWS_S3_REGION: us-east-1
