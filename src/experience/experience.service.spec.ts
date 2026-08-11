@@ -695,8 +695,58 @@ describe('ExperienceService', () => {
             category: 'TRAIL',
             name: { contains: 'mountain', mode: 'insensitive' },
             AND: [
-              { OR: [{ startDate: null }, { startDate: { gte: filterDto.startDate } }] },
-              { OR: [{ endDate: null }, { endDate: { lte: filterDto.endDate } }] },
+              { OR: [{ startDate: null }, { startDate: { lte: filterDto.startDate } }] },
+              { OR: [{ endDate: null }, { endDate: { gte: filterDto.endDate } }] },
+            ],
+          }),
+        }),
+      );
+    });
+
+    it('should cover a single arrival date when only startDate is provided', async () => {
+      const filterDto: GetExperienceFilterDto = {
+        page: 0,
+        limit: 10,
+        category: 'HOSPEDAGEM',
+        startDate: '2025-06-15T00:00:00Z',
+      } as never;
+
+      databaseService.experience.findMany.mockResolvedValueOnce([]);
+      databaseService.experience.count.mockResolvedValueOnce(0);
+
+      await service.getExperienceFilter(filterDto);
+
+      expect(databaseService.experience.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: [
+              { OR: [{ startDate: null }, { startDate: { lte: filterDto.startDate } }] },
+              { OR: [{ endDate: null }, { endDate: { gte: filterDto.startDate } }] },
+            ],
+          }),
+        }),
+      );
+    });
+
+    it('should cover a single departure date when only endDate is provided', async () => {
+      const filterDto: GetExperienceFilterDto = {
+        page: 0,
+        limit: 10,
+        category: 'HOSPEDAGEM',
+        endDate: '2025-06-20T00:00:00Z',
+      } as never;
+
+      databaseService.experience.findMany.mockResolvedValueOnce([]);
+      databaseService.experience.count.mockResolvedValueOnce(0);
+
+      await service.getExperienceFilter(filterDto);
+
+      expect(databaseService.experience.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: [
+              { OR: [{ startDate: null }, { startDate: { lte: filterDto.endDate } }] },
+              { OR: [{ endDate: null }, { endDate: { gte: filterDto.endDate } }] },
             ],
           }),
         }),

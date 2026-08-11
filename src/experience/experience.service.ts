@@ -225,15 +225,18 @@ export class ExperienceService {
   async getExperienceFilter(getExperienceFilterDto: GetExperienceFilterDto) {
     const andConditions: Prisma.ExperienceWhereInput[] = [];
 
-    if (getExperienceFilterDto.startDate) {
+    const rangeStart = getExperienceFilterDto.startDate ?? getExperienceFilterDto.endDate;
+    const rangeEnd = getExperienceFilterDto.endDate ?? getExperienceFilterDto.startDate;
+
+    if (rangeStart) {
       andConditions.push({
-        OR: [{ startDate: null }, { startDate: { gte: getExperienceFilterDto.startDate } }],
+        OR: [{ startDate: null }, { startDate: { lte: rangeStart } }],
       });
     }
 
-    if (getExperienceFilterDto.endDate) {
+    if (rangeEnd) {
       andConditions.push({
-        OR: [{ endDate: null }, { endDate: { lte: getExperienceFilterDto.endDate } }],
+        OR: [{ endDate: null }, { endDate: { gte: rangeEnd } }],
       });
     }
 
