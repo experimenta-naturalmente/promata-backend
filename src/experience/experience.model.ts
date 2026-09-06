@@ -56,46 +56,86 @@ const weekDaysSchema = z
   ])
   .transform((val) => (Array.isArray(val) ? val : val));
 
-const UpdateExperienceFormSchema = z.object({
-  experienceName: z.string(),
-  experienceDescription: z.string(),
-  experienceCategory: z.enum(Object.values(Category)),
-  experienceCapacity: stringToInt,
-  experienceStartDate: dateFromIsoString,
-  experienceEndDate: dateFromIsoString,
-  experiencePrice: stringToFloat.optional(),
-  experienceWeekDays: weekDaysSchema.optional(),
-  trailDurationMinutes: stringToInt.optional(),
-  trailDifficulty: z.enum(Object.values(TrailDifficulty)).optional(),
-  trailLength: stringToFloat.optional(),
-  professorShouldPay: booleanFromString,
-});
+// `experienceMinCapacity`/`experienceCapacity` são as extremidades do intervalo de
+// pessoas aceito pela experiência e persistem em `minCapacity`/`capacity`.
+const capacityRangeRefinement = (
+  data: { experienceMinCapacity?: number; experienceCapacity?: number },
+  ctx: z.RefinementCtx,
+) => {
+  const min = data.experienceMinCapacity;
+  const max = data.experienceCapacity;
+
+  if (min !== undefined && min < 1) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'A quantidade mínima de pessoas deve ser de pelo menos 1',
+      path: ['experienceMinCapacity'],
+    });
+  }
+
+  if (max !== undefined && max < 1) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'A quantidade máxima de pessoas deve ser de pelo menos 1',
+      path: ['experienceCapacity'],
+    });
+  }
+
+  if (min !== undefined && max !== undefined && min > max) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'A quantidade máxima de pessoas deve ser maior ou igual à mínima',
+      path: ['experienceCapacity'],
+    });
+  }
+};
+
+const UpdateExperienceFormSchema = z
+  .object({
+    experienceName: z.string(),
+    experienceDescription: z.string(),
+    experienceCategory: z.enum(Object.values(Category)),
+    experienceMinCapacity: stringToInt.optional(),
+    experienceCapacity: stringToInt,
+    experienceStartDate: dateFromIsoString,
+    experienceEndDate: dateFromIsoString,
+    experiencePrice: stringToFloat.optional(),
+    experienceWeekDays: weekDaysSchema.optional(),
+    trailDurationMinutes: stringToInt.optional(),
+    trailDifficulty: z.enum(Object.values(TrailDifficulty)).optional(),
+    trailLength: stringToFloat.optional(),
+    professorShouldPay: booleanFromString,
+  })
+  .superRefine(capacityRangeRefinement);
 
 export class UpdateExperienceFormDto extends createZodDto(UpdateExperienceFormSchema) {}
 
-const CreateExperienceFormSchema = z.object({
-  experienceName: z.string(),
-  experienceDescription: z.string(),
-  experienceCategory: z.enum(Object.values(Category)),
-  experienceCapacity: z.string().transform((val) => parseInt(val, 10)),
-  experienceStartDate: dateFromIsoString,
-  experienceEndDate: dateFromIsoString,
-  experiencePrice: z
-    .string()
-    .optional()
-    .transform((val) => (val === undefined || val === '' ? undefined : parseFloat(val))),
-  experienceWeekDays: weekDaysSchema.optional(),
-  trailDurationMinutes: z
-    .string()
-    .optional()
-    .transform((val) => (val === undefined || val === '' ? undefined : parseInt(val, 10))),
-  trailDifficulty: z.enum(Object.values(TrailDifficulty)).optional(),
-  trailLength: z
-    .string()
-    .optional()
-    .transform((val) => (val === undefined || val === '' ? undefined : parseFloat(val))),
-  professorShouldPay: booleanFromString,
-});
+const CreateExperienceFormSchema = z
+  .object({
+    experienceName: z.string(),
+    experienceDescription: z.string(),
+    experienceCategory: z.enum(Object.values(Category)),
+    experienceMinCapacity: stringToInt.optional(),
+    experienceCapacity: z.string().transform((val) => parseInt(val, 10)),
+    experienceStartDate: dateFromIsoString,
+    experienceEndDate: dateFromIsoString,
+    experiencePrice: z
+      .string()
+      .optional()
+      .transform((val) => (val === undefined || val === '' ? undefined : parseFloat(val))),
+    experienceWeekDays: weekDaysSchema.optional(),
+    trailDurationMinutes: z
+      .string()
+      .optional()
+      .transform((val) => (val === undefined || val === '' ? undefined : parseInt(val, 10))),
+    trailDifficulty: z.enum(Object.values(TrailDifficulty)).optional(),
+    trailLength: z
+      .string()
+      .optional()
+      .transform((val) => (val === undefined || val === '' ? undefined : parseFloat(val))),
+    professorShouldPay: booleanFromString,
+  })
+  .superRefine(capacityRangeRefinement);
 
 export class CreateExperienceFormDto extends createZodDto(CreateExperienceFormSchema) {}
 

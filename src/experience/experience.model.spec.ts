@@ -16,6 +16,7 @@ describe('Experience model Zod schemas', () => {
         experienceName: 'New Experience',
         experienceDescription: 'Desc',
         experienceCategory: Category.TRAIL,
+        experienceMinCapacity: '2',
         experienceCapacity: '10',
         experienceStartDate: '2025-01-01T10:00:00.000Z',
         experienceEndDate: '2025-01-01T12:00:00.000Z',
@@ -27,6 +28,7 @@ describe('Experience model Zod schemas', () => {
         professorShouldPay: 'true',
       } as any);
 
+      expect(result.experienceMinCapacity).toBe(2);
       expect(result.experienceCapacity).toBe(10);
       expect(result.experiencePrice).toBe(100.5);
       expect(result.experienceWeekDays).toEqual([WeekDay.MONDAY, WeekDay.FRIDAY]);
@@ -40,6 +42,7 @@ describe('Experience model Zod schemas', () => {
         experienceName: 'Name',
         experienceDescription: 'Desc',
         experienceCategory: Category.TRAIL,
+        experienceMinCapacity: '',
         experienceCapacity: '',
         experienceStartDate: '2025-01-01T10:00:00.000Z',
         experienceEndDate: '2025-01-01T12:00:00.000Z',
@@ -49,6 +52,7 @@ describe('Experience model Zod schemas', () => {
         professorShouldPay: undefined,
       } as any);
 
+      expect(result.experienceMinCapacity).toBeUndefined();
       expect(result.experienceCapacity).toBeUndefined();
       expect(result.experiencePrice).toBeUndefined();
       expect(result.trailDurationMinutes).toBeUndefined();
@@ -71,6 +75,64 @@ describe('Experience model Zod schemas', () => {
       expect(result.experienceWeekDays).toEqual([WeekDay.SATURDAY, WeekDay.SUNDAY]);
       expect(result.professorShouldPay).toBe(false);
     });
+
+    it('should reject a capacity range where the maximum is lower than the minimum', () => {
+      const result = UpdateExperienceFormDto.schema.safeParse({
+        experienceName: 'Name',
+        experienceDescription: 'Desc',
+        experienceCategory: Category.TRAIL,
+        experienceMinCapacity: '10',
+        experienceCapacity: '5',
+        experienceStartDate: '2025-01-01T10:00:00.000Z',
+        experienceEndDate: '2025-01-01T12:00:00.000Z',
+        professorShouldPay: 'true',
+      } as any);
+
+      expect(result.success).toBe(false);
+      expect(result.error?.issues).toEqual([
+        expect.objectContaining({
+          path: ['experienceCapacity'],
+          message: 'A quantidade máxima de pessoas deve ser maior ou igual à mínima',
+        }),
+      ]);
+    });
+
+    it('should reject a minimum capacity below 1', () => {
+      const result = UpdateExperienceFormDto.schema.safeParse({
+        experienceName: 'Name',
+        experienceDescription: 'Desc',
+        experienceCategory: Category.TRAIL,
+        experienceMinCapacity: '0',
+        experienceCapacity: '5',
+        experienceStartDate: '2025-01-01T10:00:00.000Z',
+        experienceEndDate: '2025-01-01T12:00:00.000Z',
+        professorShouldPay: 'true',
+      } as any);
+
+      expect(result.success).toBe(false);
+      expect(result.error?.issues).toEqual([
+        expect.objectContaining({
+          path: ['experienceMinCapacity'],
+          message: 'A quantidade mínima de pessoas deve ser de pelo menos 1',
+        }),
+      ]);
+    });
+
+    it('should accept a range where minimum equals maximum', () => {
+      const result = UpdateExperienceFormDto.schema.parse({
+        experienceName: 'Name',
+        experienceDescription: 'Desc',
+        experienceCategory: Category.TRAIL,
+        experienceMinCapacity: '8',
+        experienceCapacity: '8',
+        experienceStartDate: '2025-01-01T10:00:00.000Z',
+        experienceEndDate: '2025-01-01T12:00:00.000Z',
+        professorShouldPay: 'true',
+      } as any);
+
+      expect(result.experienceMinCapacity).toBe(8);
+      expect(result.experienceCapacity).toBe(8);
+    });
   });
 
   describe('CreateExperienceFormSchema', () => {
@@ -79,6 +141,7 @@ describe('Experience model Zod schemas', () => {
         experienceName: 'Create Exp',
         experienceDescription: 'Desc',
         experienceCategory: Category.TRAIL,
+        experienceMinCapacity: '5',
         experienceCapacity: '20',
         experienceStartDate: '2025-05-01T09:00:00.000Z',
         experienceEndDate: '2025-05-01T17:00:00.000Z',
@@ -90,6 +153,7 @@ describe('Experience model Zod schemas', () => {
         professorShouldPay: 'true',
       } as any);
 
+      expect(result.experienceMinCapacity).toBe(5);
       expect(result.experienceCapacity).toBe(20);
       expect(result.experiencePrice).toBe(50.0);
       expect(result.experienceWeekDays).toEqual([WeekDay.WEDNESDAY]);
@@ -116,6 +180,21 @@ describe('Experience model Zod schemas', () => {
       expect(result.trailDurationMinutes).toBeUndefined();
       expect(result.trailLength).toBeUndefined();
       expect(result.professorShouldPay).toBe(false);
+    });
+
+    it('should reject an inverted capacity range on creation', () => {
+      const result = CreateExperienceFormDto.schema.safeParse({
+        experienceName: 'Create Exp',
+        experienceDescription: 'Desc',
+        experienceCategory: Category.TRAIL,
+        experienceMinCapacity: '12',
+        experienceCapacity: '4',
+        experienceStartDate: '2025-05-01T09:00:00.000Z',
+        experienceEndDate: '2025-05-01T17:00:00.000Z',
+        professorShouldPay: 'true',
+      } as any);
+
+      expect(result.success).toBe(false);
     });
   });
 
