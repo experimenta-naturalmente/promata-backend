@@ -129,24 +129,26 @@ enum HighlightCategory {
 }
 
 model Image {
-  id         String       @id @default(uuid())
-  url        String       @unique
-  active     Boolean      @default(true)
-  Experience Experience[]
+  id              String            @id @default(uuid())
+  url             String            @unique
+  active          Boolean           @default(true)
+  Experience      Experience[]
+  ExperienceImage ExperienceImage[]
 }
 
 model Experience {
-  id                 String           @id @default(uuid())
+  id                 String            @id @default(uuid())
   name               String
   description        String
   category           Category
-  minCapacity        Int              @default(1)
+  minCapacity        Int               @default(1)
   capacity           Int
-  image              Image?           @relation(fields: [imageId], references: [id])
+  image              Image?            @relation(fields: [imageId], references: [id])
+  images             ExperienceImage[]
   startDate          DateTime?
   endDate            DateTime?
   price              Decimal?
-  professorShouldPay Boolean          @default(true)
+  professorShouldPay Boolean           @default(true)
   weekDays           WeekDay[]
   durationMinutes    Int?
   trailDifficulty    TrailDifficulty?
@@ -154,7 +156,21 @@ model Experience {
   imageId            String?
   active             Boolean
   reservation        Reservation[]
-  createdAt          DateTime         @default(now())
+  createdAt          DateTime          @default(now())
+}
+
+/// Galeria ordenada de imagens de uma experiência.
+/// `Experience.imageId` continua apontando para a capa (posição 0).
+model ExperienceImage {
+  id           String     @id @default(uuid())
+  experience   Experience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  experienceId String
+  image        Image      @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  imageId      String
+  position     Int        @default(0)
+
+  @@unique([experienceId, imageId])
+  @@index([experienceId, position])
 }
 
 model Document {

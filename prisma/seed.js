@@ -476,6 +476,23 @@ async function main() {
   }
   console.log(`✓ ${experiences.length} experiências\n`);
 
+  // GALERIAS: a capa fica na posição 0 e as demais fotos alternam no card
+  console.log('🖼️  Montando galerias das experiências...');
+  let galleryEntries = 0;
+  for (const experience of experiences) {
+    const others = images.filter((image) => image.id !== experience.imageId);
+    const extras = [...others].sort(() => Math.random() - 0.5).slice(0, randomInt(1, 3));
+    const gallery = [experience.imageId, ...extras.map((image) => image.id)];
+
+    for (let position = 0; position < gallery.length; position++) {
+      await prisma.experienceImage.create({
+        data: { experienceId: experience.id, imageId: gallery[position], position },
+      });
+      galleryEntries++;
+    }
+  }
+  console.log(`✓ ${galleryEntries} fotos vinculadas às experiências\n`);
+
   // HIGHLIGHTS (17 total: 5 CAROUSEL + 3 de cada outra categoria)
   console.log('⭐ Criando highlights...');
   const highlightConfig = [
