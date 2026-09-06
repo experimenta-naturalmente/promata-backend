@@ -264,6 +264,7 @@ describe('ReservationService', () => {
         {
           id: 'rg-1',
           email: 'user1@example.com',
+          name: 'User One',
           createdAt: new Date('2025-01-01T10:00:00Z'),
           status: RequestType.CREATED,
           experiences: ['Exp 1', 'Exp 2'],
@@ -294,6 +295,7 @@ describe('ReservationService', () => {
           {
             id: 'rg-1',
             experiences: ['Exp 1', 'Exp 2'],
+            name: 'User One',
             email: 'user1@example.com',
             status: RequestType.CREATED,
           },
@@ -319,6 +321,7 @@ describe('ReservationService', () => {
         null,
         null,
         null,
+        null,
         0,
         10,
       );
@@ -337,6 +340,7 @@ describe('ReservationService', () => {
 
       expect(databaseService.$queryRawUnsafe).toHaveBeenCalledWith(
         expect.stringContaining('ORDER BY rg."createdAt" DESC'),
+        null,
         null,
         null,
         null,

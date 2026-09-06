@@ -65,6 +65,7 @@ describe('Reservation model Zod schemas', () => {
         limit: '10',
         experiences: 'Trail',
         email: 'user@example.com',
+        name: 'User One',
       } as any);
 
       expect(result.page).toBe(0);
@@ -73,6 +74,7 @@ describe('Reservation model Zod schemas', () => {
       expect(result.sort).toBeUndefined();
       expect(result.experiences).toBe('Trail');
       expect(result.email).toBe('user@example.com');
+      expect(result.name).toBe('User One');
     });
 
     it('should accept dir desc and wrap single status into array', () => {

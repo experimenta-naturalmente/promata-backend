@@ -31,6 +31,7 @@ const RESERVATION_QUERY = `-- baseQuery
 SELECT
   rg.id,
   u.email,
+  u.name,
   rg."createdAt",
   lr.type AS status,
   array_agg(DISTINCT e.name) AS experiences
@@ -55,7 +56,9 @@ WHERE rg.active = true
     $3::"RequestType"[] IS NULL
     OR lr.type = ANY($3::"RequestType"[])
   )
-GROUP BY rg.id, u.email, rg."createdAt", lr.type`;
+  -- filtro por nome de quem fez a reserva
+  AND ($4::text IS NULL OR u.name ILIKE '%' || $4 || '%')
+GROUP BY rg.id, u.email, u.name, rg."createdAt", lr.type`;
 
 @Injectable()
 export class ReservationService {
@@ -65,7 +68,7 @@ export class ReservationService {
   ) {}
 
   async getAllReservationGroups(searchParams: ReservationSearchParamsDto) {
-    const { page, limit, sort, dir, email, experiences, status } = searchParams;
+    const { page, limit, sort, dir, email, experiences, status, name } = searchParams;
 
     const offset = page * limit;
 
@@ -83,6 +86,7 @@ export class ReservationService {
     type RawRow = {
       id: string;
       email: string;
+      name: string;
       createdAt: Date;
       status: RequestType | null;
       experiences: string[] | null;
@@ -92,12 +96,13 @@ export class ReservationService {
       `
     ${RESERVATION_QUERY}
     ${orderByClause}
-    OFFSET $4
-    LIMIT $5
+    OFFSET $5
+    LIMIT $6
     `,
       email ?? null,
       experiences ?? null,
       status && status.length > 0 ? status : null,
+      name ?? null,
       offset,
       limit,
     );
@@ -112,6 +117,7 @@ export class ReservationService {
       email ?? null,
       experiences ?? null,
       status && status.length > 0 ? status : null,
+      name ?? null,
     );
 
     const total = Number(totalResult[0]?.count ?? 0);
@@ -119,6 +125,7 @@ export class ReservationService {
     const items = rows.map((row) => ({
       id: row.id,
       experiences: row.experiences ?? [],
+      name: row.name,
       email: row.email,
       status: row.status,
     }));
