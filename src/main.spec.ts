@@ -33,6 +33,7 @@ describe('bootstrap (main.ts)', () => {
   const originalEnv = process.env;
 
   const createMockApp = () => ({
+    set: jest.fn(),
     use: jest.fn(),
     useBodyParser: jest.fn(),
     enableCors: jest.fn(),
@@ -77,6 +78,9 @@ describe('bootstrap (main.ts)', () => {
     expect(NestFactory.create).toHaveBeenCalled();
     expect(mockApp.use).toHaveBeenCalled();
     expect(mockApp.useBodyParser).toHaveBeenCalled();
+
+    // Sem `trust proxy` o ThrottlerGuard agrupa todos os clientes no IP do proxy.
+    expect(mockApp.set).toHaveBeenCalledWith('trust proxy', 1);
 
     expect(mockApp.enableCors).toHaveBeenCalledWith(
       expect.objectContaining({

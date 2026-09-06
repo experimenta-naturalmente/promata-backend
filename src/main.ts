@@ -7,11 +7,12 @@ import helmet from 'helmet';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  app.set('trust proxy', 1);
+
   app.use(helmet());
   app.useBodyParser('json', { limit: '1mb' });
   app.useBodyParser('urlencoded', { limit: '1mb', extended: true });
 
-  // Configuração CORS - usa CORS_ORIGINS do ambiente ou fallback para desenvolvimento
   const defaultOrigins = [
     'http://localhost:3002',
     'http://localhost:3001',
@@ -20,7 +21,6 @@ async function bootstrap() {
     'https://promata.com.br',
   ];
 
-  // Adiciona FRONTEND_URL (sem barra final) caso esteja configurado
   if (process.env.FRONTEND_URL) {
     const frontendUrl = process.env.FRONTEND_URL.replace(/\/$/, '');
     if (!defaultOrigins.includes(frontendUrl)) {

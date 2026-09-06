@@ -79,6 +79,7 @@ export class AuthController {
   @Get('profile')
   @Roles(UserType.GUEST, UserType.ADMIN)
   @ApiBearerAuth('access-token')
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   async findProfile(@User() user: CurrentUser) {
     return await this.authService.findProfile(user.id);
