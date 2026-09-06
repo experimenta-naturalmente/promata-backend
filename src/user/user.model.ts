@@ -60,6 +60,9 @@ export const UserSearchParamsSchema = z.object({
   name: z.string().optional(),
   email: z.string().optional(),
   createdBy: z.string().optional(),
+  userType: z
+    .enum([UserType.ADMIN, UserType.ROOT, UserType.GUEST, UserType.PROFESSOR])
+    .optional(),
 });
 
 export class UserSearchParamsDto extends createZodDto(UserSearchParamsSchema) {}

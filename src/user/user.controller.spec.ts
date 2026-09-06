@@ -192,12 +192,14 @@ describe('UserController', () => {
             id: 'user-1',
             name: 'User One',
             email: 'user1@example.com',
+            userType: UserType.ADMIN,
             createdBy: { id: 'admin-1', name: 'Admin One' },
           },
           {
             id: 'user-2',
             name: 'User Two',
             email: 'user2@example.com',
+            userType: UserType.GUEST,
             createdBy: { id: 'admin-1', name: 'Admin One' },
           },
         ],
@@ -208,6 +210,7 @@ describe('UserController', () => {
       const result = await controller.searchUser(searchParams);
 
       expect(result).toEqual(expectedResult);
+      expect(result.items[0].userType).toBe(UserType.ADMIN);
       expect(service.searchUser).toHaveBeenCalledWith(searchParams);
       expect(service.searchUser).toHaveBeenCalledTimes(1);
     });

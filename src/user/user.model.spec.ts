@@ -86,5 +86,41 @@ describe('User model Zod schemas', () => {
       expect(result.email).toBe('john@example.com');
       expect(result.createdBy).toBe('Admin');
     });
+
+    it('should accept every userType value and leave it undefined when omitted', () => {
+      const userTypes = [
+        UserType.ADMIN,
+        UserType.ROOT,
+        UserType.GUEST,
+        UserType.PROFESSOR,
+      ];
+
+      userTypes.forEach((userType) => {
+        const result = UserSearchParamsSchema.parse({
+          page: '0',
+          limit: '10',
+          userType,
+        } as any);
+
+        expect(result.userType).toBe(userType);
+      });
+
+      const withoutUserType = UserSearchParamsSchema.parse({
+        page: '0',
+        limit: '10',
+      } as any);
+
+      expect(withoutUserType.userType).toBeUndefined();
+    });
+
+    it('should reject an unknown userType', () => {
+      expect(() =>
+        UserSearchParamsSchema.parse({
+          page: '0',
+          limit: '10',
+          userType: 'MANAGER',
+        } as any),
+      ).toThrow();
+    });
   });
 });

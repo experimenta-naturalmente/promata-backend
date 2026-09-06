@@ -140,6 +140,7 @@ export class UserService {
             },
           }
         : undefined,
+      userType: searchParams.userType,
       active: true,
     };
 
@@ -149,6 +150,7 @@ export class UserService {
         id: true,
         name: true,
         email: true,
+        userType: true,
         createdBy: {
           select: {
             id: true,

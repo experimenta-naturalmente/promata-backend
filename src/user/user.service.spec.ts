@@ -296,6 +296,7 @@ describe('UserService', () => {
           id: 'user-1',
           name: 'John',
           email: 'john@example.com',
+          userType: UserType.PROFESSOR,
           createdBy: { id: 'admin-1', name: 'Admin' },
         },
       ];
@@ -327,6 +328,7 @@ describe('UserService', () => {
           id: true,
           name: true,
           email: true,
+          userType: true,
           createdBy: {
             select: {
               id: true,
@@ -377,6 +379,7 @@ describe('UserService', () => {
           id: true,
           name: true,
           email: true,
+          userType: true,
           createdBy: {
             select: {
               id: true,
@@ -387,6 +390,37 @@ describe('UserService', () => {
         orderBy: { email: 'desc' },
         skip: 5,
         take: 5,
+      });
+    });
+
+    it('should filter users by userType', async () => {
+      const searchParams: UserSearchParamsDto = {
+        page: 0,
+        limit: 10,
+        sort: 'name',
+        dir: 'asc',
+        userType: UserType.PROFESSOR,
+      } as never;
+
+      databaseService.user.findMany.mockResolvedValueOnce([]);
+      databaseService.user.count.mockResolvedValueOnce(0);
+
+      await service.searchUser(searchParams);
+
+      const expectedWhere = {
+        name: { contains: undefined },
+        email: { contains: undefined },
+        createdBy: undefined,
+        userType: UserType.PROFESSOR,
+        active: true,
+      };
+
+      expect(databaseService.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expectedWhere }),
+      );
+
+      expect(databaseService.user.count).toHaveBeenCalledWith({
+        where: expectedWhere,
       });
     });
   });
