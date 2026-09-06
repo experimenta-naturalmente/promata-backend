@@ -360,20 +360,17 @@ async function main() {
     experiences.push(experience);
   }
 
-  // HOSPEDAGENS (15)
+  // HOSPEDAGENS QUARTO
   const hostingNames = [
     'Cabana Premium',
-    'Chalé da Mata',
-    'Casa na Árvore',
     'Camping Sustentável',
     'Alojamento Coletivo',
     'Refúgio da Serra',
     'Dormitório Eco',
     'Suíte Vista',
-    'Chalé Familiar',
     'Camping Privativo',
-    'Bangalô Rústico',
   ];
+  const houseNames = ['Chalé da Mata', 'Casa na Árvore', 'Chalé Familiar', 'Bangalô Rústico'];
 
   for (let i = 0; i < hostingNames.length; i++) {
     const experience = await prisma.experience.create({
@@ -384,6 +381,27 @@ async function main() {
         minCapacity: 1,
         capacity: randomInt(2, 8),
         price: randomInt(80, 400),
+        weekDays: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
+        durationMinutes: 1440,
+        active: true,
+        imageId: randomChoice(images).id,
+        startDate: new Date('2025-01-01'),
+        endDate: new Date('2025-12-31'),
+      },
+    });
+    experiences.push(experience);
+  }
+
+  // HOSPEDAGENS CASA
+  for (let i = 0; i < houseNames.length; i++) {
+    const experience = await prisma.experience.create({
+      data: {
+        name: houseNames[i],
+        description: `Hospedagem casa ${houseNames[i]} com estrutura completa.`,
+        category: 'HOSTING_HOUSE',
+        minCapacity: 1,
+        capacity: randomInt(4, 12),
+        price: randomInt(200, 800),
         weekDays: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
         durationMinutes: 1440,
         active: true,
@@ -542,7 +560,7 @@ async function main() {
       const startDate = new Date(2025, month - 1, randomInt(1, 28), randomInt(8, 18), 0, 0);
 
       let endDate = new Date(startDate);
-      if (randomExperience.category === 'HOSTING') {
+      if (randomExperience.category === 'HOSTING' || randomExperience.category === 'HOSTING_HOUSE') {
         endDate = addDays(startDate, randomInt(1, 5));
       } else if (randomExperience.durationMinutes) {
         endDate.setMinutes(startDate.getMinutes() + randomExperience.durationMinutes);
