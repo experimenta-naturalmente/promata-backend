@@ -334,12 +334,14 @@ async function main() {
   for (let i = 0; i < trailNames.length; i++) {
     const difficulty = randomChoice(['LIGHT', 'MODERATED', 'HEAVY', 'EXTREME']);
     const length = randomInt(20, 150) / 10;
+    const capacity = randomInt(10, 30);
     const experience = await prisma.experience.create({
       data: {
         name: trailNames[i],
         description: `Trilha de ${length}km com nível ${difficulty}.`,
         category: 'TRAIL',
-        capacity: randomInt(10, 30),
+        minCapacity: randomInt(1, 5),
+        capacity,
         price: randomInt(30, 100),
         weekDays: randomChoice([
           ['SATURDAY', 'SUNDAY'],
@@ -379,6 +381,7 @@ async function main() {
         name: hostingNames[i],
         description: `Hospedagem ${hostingNames[i]} com estrutura completa.`,
         category: 'HOSTING',
+        minCapacity: 1,
         capacity: randomInt(2, 8),
         price: randomInt(80, 400),
         weekDays: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
@@ -413,6 +416,7 @@ async function main() {
         name: labNames[i],
         description: `${labNames[i]} equipado para pesquisas.`,
         category: 'LABORATORY',
+        minCapacity: randomInt(1, 5),
         capacity: randomInt(5, 15),
         price: randomInt(100, 300),
         weekDays: randomChoice([
@@ -458,6 +462,7 @@ async function main() {
         name: randomChoice(eventNames),
         description: `Evento especial. Duração: ${durationHours}h.`,
         category: 'EVENT',
+        minCapacity: randomInt(1, 10),
         capacity: randomInt(20, 80),
         price: randomInt(50, 150),
         durationMinutes: durationHours * 60,

@@ -140,6 +140,7 @@ model Experience {
   name               String
   description        String
   category           Category
+  minCapacity        Int              @default(1)
   capacity           Int
   image              Image?           @relation(fields: [imageId], references: [id])
   startDate          DateTime?
