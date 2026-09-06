@@ -56,8 +56,8 @@ const weekDaysSchema = z
   ])
   .transform((val) => (Array.isArray(val) ? val : val));
 
-// `experienceMinCapacity`/`experienceCapacity` são as extremidades do intervalo de
-// pessoas aceito pela experiência e persistem em `minCapacity`/`capacity`.
+const stringListSchema = z.union([z.array(z.string()), z.string().transform((val) => [val])]);
+
 const capacityRangeRefinement = (
   data: { experienceMinCapacity?: number; experienceCapacity?: number },
   ctx: z.RefinementCtx,
@@ -105,6 +105,7 @@ const UpdateExperienceFormSchema = z
     trailDifficulty: z.enum(Object.values(TrailDifficulty)).optional(),
     trailLength: stringToFloat.optional(),
     professorShouldPay: booleanFromString,
+    experienceImageUrls: stringListSchema.optional(),
   })
   .superRefine(capacityRangeRefinement);
 

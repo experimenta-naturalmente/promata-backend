@@ -38,6 +38,7 @@ describe('ExperienceService', () => {
       },
       image: {
         findUnique: jest.fn(),
+        findMany: jest.fn(),
         create: jest.fn(),
       },
       reservation: {
@@ -194,6 +195,10 @@ describe('ExperienceService', () => {
         professorShouldPay: true,
         active: true,
         image: { url: 'https://example.com/image.png' },
+        images: [
+          { image: { url: 'https://example.com/image.png' } },
+          { image: { url: 'https://example.com/image-2.png' } },
+        ],
       };
 
       databaseService.experience.findUnique.mockResolvedValueOnce(experience);
@@ -217,6 +222,10 @@ describe('ExperienceService', () => {
         professorShouldPay: experience.professorShouldPay,
         active: experience.active,
         image: experience.image,
+        images: [
+          { url: 'https://example.com/image.png' },
+          { url: 'https://example.com/image-2.png' },
+        ],
       });
     });
 
@@ -293,7 +302,7 @@ describe('ExperienceService', () => {
       databaseService.image.create.mockResolvedValueOnce(mockImage as never);
       databaseService.experience.update.mockResolvedValueOnce({} as never);
 
-      await service.updateExperience(experienceId, dto, mockFile);
+      await service.updateExperience(experienceId, dto, [mockFile]);
 
       expect(storageService.uploadFile).toHaveBeenCalledWith(mockFile, {
         directory: 'experiences',
@@ -321,8 +330,100 @@ describe('ExperienceService', () => {
           trailDifficulty: undefined,
           trailLength: undefined,
           imageId,
+          images: {
+            deleteMany: {},
+            create: [{ imageId, position: 0 }],
+          },
         },
       });
+    });
+
+    it('should replace the whole gallery when several files are sent', async () => {
+      const dto: UpdateExperienceFormDto = { experienceName: 'Gallery' } as never;
+      const secondFile = { ...mockFile, originalname: 'second.jpg' } as Express.Multer.File;
+
+      storageService.uploadFile
+        .mockResolvedValueOnce({ url: uploadedUrl })
+        .mockResolvedValueOnce({ url: 'https://s3.example.com/experiences/second.jpg' });
+      databaseService.image.create
+        .mockResolvedValueOnce({ id: imageId, url: uploadedUrl } as never)
+        .mockResolvedValueOnce({ id: 'second-image-id', url: 'second' } as never);
+      databaseService.experience.update.mockResolvedValueOnce({} as never);
+
+      await service.updateExperience(experienceId, dto, [mockFile, secondFile]);
+
+      expect(databaseService.experience.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            imageId,
+            images: {
+              deleteMany: {},
+              create: [
+                { imageId, position: 0 },
+                { imageId: 'second-image-id', position: 1 },
+              ],
+            },
+          }),
+        }),
+      );
+    });
+
+    it('should keep the listed urls before the newly uploaded files', async () => {
+      const dto: UpdateExperienceFormDto = {
+        experienceName: 'Mixed gallery',
+        experienceImageUrls: ['https://s3.example.com/b.jpg', 'https://s3.example.com/a.jpg'],
+      } as never;
+
+      // Retorno fora de ordem para provar que a ordem enviada é a que vale
+      databaseService.image.findMany.mockResolvedValueOnce([
+        { id: 'image-a', url: 'https://s3.example.com/a.jpg' },
+        { id: 'image-b', url: 'https://s3.example.com/b.jpg' },
+      ] as never);
+      storageService.uploadFile.mockResolvedValueOnce({ url: uploadedUrl });
+      databaseService.image.create.mockResolvedValueOnce({ id: imageId, url: uploadedUrl } as never);
+      databaseService.experience.update.mockResolvedValueOnce({} as never);
+
+      await service.updateExperience(experienceId, dto, [mockFile]);
+
+      expect(databaseService.experience.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            imageId: 'image-b',
+            images: {
+              deleteMany: {},
+              create: [
+                { imageId: 'image-b', position: 0 },
+                { imageId: 'image-a', position: 1 },
+                { imageId, position: 2 },
+              ],
+            },
+          }),
+        }),
+      );
+    });
+
+    it('should drop urls that no longer exist in the database', async () => {
+      const dto: UpdateExperienceFormDto = {
+        experienceName: 'Stale url',
+        experienceImageUrls: ['https://s3.example.com/gone.jpg', 'https://s3.example.com/a.jpg'],
+      } as never;
+
+      databaseService.image.findMany.mockResolvedValueOnce([
+        { id: 'image-a', url: 'https://s3.example.com/a.jpg' },
+      ] as never);
+      databaseService.experience.update.mockResolvedValueOnce({} as never);
+
+      await service.updateExperience(experienceId, dto, []);
+
+      expect(storageService.uploadFile).not.toHaveBeenCalled();
+      expect(databaseService.experience.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            imageId: 'image-a',
+            images: { deleteMany: {}, create: [{ imageId: 'image-a', position: 0 }] },
+          }),
+        }),
+      );
     });
 
     it('should update experience with file upload missing mimetype', async () => {
@@ -335,7 +436,7 @@ describe('ExperienceService', () => {
       databaseService.image.create.mockResolvedValueOnce({ id: 'img-id' } as never);
       databaseService.experience.update.mockResolvedValueOnce({} as never);
 
-      await service.updateExperience(experienceId, dto, fileNoMime);
+      await service.updateExperience(experienceId, dto, [fileNoMime]);
 
       expect(storageService.uploadFile).toHaveBeenCalledWith(
         expect.objectContaining({ originalname: 'test.jpg' }),
@@ -606,6 +707,7 @@ describe('ExperienceService', () => {
           trailLength: undefined,
           active: true,
           imageId: undefined,
+          images: { create: [] },
         },
       });
     });
@@ -632,7 +734,7 @@ describe('ExperienceService', () => {
       databaseService.image.create.mockResolvedValueOnce(mockImage as never);
       databaseService.experience.create.mockResolvedValueOnce({} as never);
 
-      await service.createExperience(dto, mockFile);
+      await service.createExperience(dto, [mockFile]);
 
       expect(storageService.uploadFile).toHaveBeenCalledWith(mockFile, {
         directory: 'experiences',
@@ -660,9 +762,47 @@ describe('ExperienceService', () => {
           trailLength: dto.trailLength,
           active: true,
           imageId,
+          images: { create: [{ imageId, position: 0 }] },
         },
       });
     });
+
+    it('should create experience with several images keeping the upload order', async () => {
+      const dto: CreateExperienceFormDto = { experienceName: 'Gallery' } as never;
+      const files = ['a.jpg', 'b.jpg', 'c.jpg'].map(
+        (originalname) => ({ ...mockFile, originalname }) as Express.Multer.File,
+      );
+
+      storageService.uploadFile
+        .mockResolvedValueOnce({ url: 'https://s3.example.com/experiences/a.jpg' })
+        .mockResolvedValueOnce({ url: 'https://s3.example.com/experiences/b.jpg' })
+        .mockResolvedValueOnce({ url: 'https://s3.example.com/experiences/c.jpg' });
+      databaseService.image.create
+        .mockResolvedValueOnce({ id: 'image-a' } as never)
+        .mockResolvedValueOnce({ id: 'image-b' } as never)
+        .mockResolvedValueOnce({ id: 'image-c' } as never);
+      databaseService.experience.create.mockResolvedValueOnce({} as never);
+
+      await service.createExperience(dto, files);
+
+      expect(storageService.uploadFile).toHaveBeenCalledTimes(3);
+      expect(databaseService.experience.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            // A capa continua sendo a primeira imagem enviada
+            imageId: 'image-a',
+            images: {
+              create: [
+                { imageId: 'image-a', position: 0 },
+                { imageId: 'image-b', position: 1 },
+                { imageId: 'image-c', position: 2 },
+              ],
+            },
+          }),
+        }),
+      );
+    });
+
     it('should create experience with file upload missing mimetype', async () => {
       const dto: CreateExperienceFormDto = {
         experienceName: 'No Mime',
@@ -673,7 +813,7 @@ describe('ExperienceService', () => {
       databaseService.image.create.mockResolvedValueOnce({ id: 'img-id' } as never);
       databaseService.experience.create.mockResolvedValueOnce({} as never);
 
-      await service.createExperience(dto, fileNoMime);
+      await service.createExperience(dto, [fileNoMime]);
 
       expect(storageService.uploadFile).toHaveBeenCalledWith(
         expect.objectContaining({ originalname: 'test.jpg' }),
@@ -695,7 +835,15 @@ describe('ExperienceService', () => {
       };
 
       databaseService.experience.findMany.mockResolvedValueOnce([
-        { id: 'experience-1', price, capacity: 4 },
+        {
+          id: 'experience-1',
+          price,
+          capacity: 4,
+          images: [
+            { image: { url: 'https://example.com/first.png' } },
+            { image: { url: 'https://example.com/second.png' } },
+          ],
+        },
       ]);
       databaseService.experience.count.mockResolvedValueOnce(1);
 
@@ -704,6 +852,10 @@ describe('ExperienceService', () => {
       expect(price.mul).toHaveBeenCalledWith(4);
       expect(toNumber).toHaveBeenCalledTimes(1);
       expect(result.items[0].priceMax).toBe(1200);
+      expect(result.items[0].images).toEqual([
+        { url: 'https://example.com/first.png' },
+        { url: 'https://example.com/second.png' },
+      ]);
     });
 
     it('should filter by date range and search term', async () => {

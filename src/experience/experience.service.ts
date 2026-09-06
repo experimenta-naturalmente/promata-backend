@@ -9,12 +9,60 @@ import {
   UpdateExperienceFormDto,
 } from './experience.model';
 
+const IMAGE_GALLERY_SELECT = {
+  select: { image: { select: { url: true } } },
+  orderBy: { position: 'asc' },
+} as const;
+
+/// Achata a galeria (`ExperienceImage[]`) em uma lista simples de URLs para o cliente.
+function flattenGallery<T extends { images: { image: { url: string } }[] }>(experience: T) {
+  const { images, ...rest } = experience;
+
+  return { ...rest, images: images.map(({ image }) => image) };
+}
+
 @Injectable()
 export class ExperienceService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly storageService: StorageService,
   ) {}
+
+  private async uploadExperienceImages(files?: Express.Multer.File[] | null) {
+    const images: { id: string; url: string }[] = [];
+
+    for (const file of files ?? []) {
+      const uploaded = await this.storageService.uploadFile(file, {
+        directory: 'experiences',
+        contentType: file.mimetype ?? undefined,
+        cacheControl: 'public, max-age=31536000',
+      });
+
+      const createdImage = await this.databaseService.image.create({
+        data: { url: uploaded.url },
+      });
+
+      images.push(createdImage);
+    }
+
+    return images;
+  }
+
+  private async resolveImagesByUrl(urls?: string[] | null) {
+    if (!urls || urls.length === 0) {
+      return [];
+    }
+
+    const images = await this.databaseService.image.findMany({
+      where: { url: { in: urls } },
+      select: { id: true, url: true },
+    });
+    const byUrl = new Map(images.map((image) => [image.url, image]));
+
+    return urls
+      .map((url) => byUrl.get(url))
+      .filter((image): image is { id: string; url: string } => image !== undefined);
+  }
 
   async getExperience(experienceId: string) {
     const experience = await this.databaseService.experience.findUnique({
@@ -39,6 +87,7 @@ export class ExperienceService {
             url: true,
           },
         },
+        images: IMAGE_GALLERY_SELECT,
       },
     });
 
@@ -46,7 +95,7 @@ export class ExperienceService {
       throw new NotFoundException('Experiência não encontrada');
     }
 
-    return experience;
+    return flattenGallery(experience);
   }
 
   async deleteExperience(experienceId: string) {
@@ -96,23 +145,25 @@ export class ExperienceService {
   async updateExperience(
     experienceId: string,
     updateExperienceDto: UpdateExperienceFormDto,
-    file?: Express.Multer.File | null,
+    files?: Express.Multer.File[] | null,
   ) {
-    let imageId: string | undefined = undefined;
-
-    if (file) {
-      const uploaded = await this.storageService.uploadFile(file, {
-        directory: 'experiences',
-        contentType: file.mimetype ?? undefined,
-        cacheControl: 'public, max-age=31536000',
-      });
-
-      const createdImage = await this.databaseService.image.create({
-        data: { url: uploaded.url },
-      });
-
-      imageId = createdImage.id;
-    }
+    const keptUrls = updateExperienceDto.experienceImageUrls;
+    const keptImages = await this.resolveImagesByUrl(keptUrls);
+    const uploadedImages = await this.uploadExperienceImages(files);
+    const galleryImages = [...keptImages, ...uploadedImages];
+    // Um cliente que não menciona imagens mantém a galeria intacta.
+    const gallery =
+      keptUrls === undefined && uploadedImages.length === 0
+        ? {}
+        : {
+            images: {
+              deleteMany: {},
+              create: galleryImages.map((image, position) => ({
+                imageId: image.id,
+                position,
+              })),
+            },
+          };
 
     await this.databaseService.experience.update({
       where: { id: experienceId },
@@ -129,7 +180,8 @@ export class ExperienceService {
         durationMinutes: updateExperienceDto.trailDurationMinutes,
         trailDifficulty: updateExperienceDto.trailDifficulty,
         trailLength: updateExperienceDto.trailLength,
-        imageId,
+        imageId: galleryImages[0]?.id,
+        ...gallery,
       },
     });
   }
@@ -187,23 +239,9 @@ export class ExperienceService {
 
   async createExperience(
     createExperienceDto: CreateExperienceFormDto,
-    file?: Express.Multer.File | null,
+    files?: Express.Multer.File[] | null,
   ) {
-    let imageId: string | undefined = undefined;
-
-    if (file) {
-      const uploaded = await this.storageService.uploadFile(file, {
-        directory: 'experiences',
-        contentType: file.mimetype ?? undefined,
-        cacheControl: 'public, max-age=31536000',
-      });
-
-      const createdImage = await this.databaseService.image.create({
-        data: { url: uploaded.url },
-      });
-
-      imageId = createdImage.id;
-    }
+    const uploadedImages = await this.uploadExperienceImages(files);
 
     await this.databaseService.experience.create({
       data: {
@@ -220,7 +258,10 @@ export class ExperienceService {
         trailDifficulty: createExperienceDto.trailDifficulty,
         trailLength: createExperienceDto.trailLength,
         active: true,
-        imageId,
+        imageId: uploadedImages[0]?.id,
+        images: {
+          create: uploadedImages.map((image, position) => ({ imageId: image.id, position })),
+        },
       },
     });
   }
@@ -274,6 +315,7 @@ export class ExperienceService {
             url: true,
           },
         },
+        images: IMAGE_GALLERY_SELECT,
       },
 
       skip: getExperienceFilterDto.limit * getExperienceFilterDto.page,
@@ -282,7 +324,7 @@ export class ExperienceService {
 
     const total = await this.databaseService.experience.count({ where });
     const items = experiences.map((experience) => ({
-      ...experience,
+      ...flattenGallery(experience),
       priceMax:
         experience.price == null ? null : experience.price.mul(experience.capacity).toNumber(),
     }));

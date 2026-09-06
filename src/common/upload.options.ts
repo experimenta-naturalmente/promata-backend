@@ -23,6 +23,8 @@ export const IMAGE_UPLOAD = createUploadOptions(
   5 * MB,
 );
 
+export const MAX_EXPERIENCE_IMAGES = 10;
+
 export const DOCUMENT_UPLOAD = createUploadOptions(
   ['image/jpeg', 'image/png', 'application/pdf'] as const,
   10 * MB,

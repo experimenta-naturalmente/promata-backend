@@ -191,10 +191,29 @@ describe('ExperienceController', () => {
 
       experienceService.updateExperience.mockResolvedValueOnce(undefined);
 
-      await controller.updateExperienceAsAdmin(experienceId, dto, mockFile);
+      await controller.updateExperienceAsAdmin(experienceId, dto, { image: [mockFile] });
 
-      expect(experienceService.updateExperience).toHaveBeenCalledWith(experienceId, dto, mockFile);
+      expect(experienceService.updateExperience).toHaveBeenCalledWith(experienceId, dto, [
+        mockFile,
+      ]);
       expect(experienceService.updateExperience).toHaveBeenCalledTimes(1);
+    });
+
+    it('should forward the whole gallery sent through the images field', async () => {
+      const experienceId = '8i4i1i7h-8l34-18hm-6m7m-1h88m0l5h6m4';
+      const gallery = ['one.jpg', 'two.jpg'].map(
+        (originalname) => ({ originalname, mimetype: 'image/jpeg' }) as Express.Multer.File,
+      );
+
+      experienceService.updateExperience.mockResolvedValueOnce(undefined);
+
+      await controller.updateExperienceAsAdmin(experienceId, {} as never, { images: gallery });
+
+      expect(experienceService.updateExperience).toHaveBeenCalledWith(
+        experienceId,
+        {},
+        [gallery[0], gallery[1]],
+      );
     });
 
     it('should call experienceService.updateExperience with null file when no file is uploaded', async () => {
@@ -218,7 +237,7 @@ describe('ExperienceController', () => {
 
       await controller.updateExperienceAsAdmin(experienceId, dto, null);
 
-      expect(experienceService.updateExperience).toHaveBeenCalledWith(experienceId, dto, null);
+      expect(experienceService.updateExperience).toHaveBeenCalledWith(experienceId, dto, []);
     });
 
     it('should not return any value (NO_CONTENT)', async () => {
@@ -377,10 +396,27 @@ describe('ExperienceController', () => {
 
       experienceService.createExperience.mockResolvedValueOnce(undefined);
 
-      await controller.createExperienceAsAdmin(dto, mockFile);
+      await controller.createExperienceAsAdmin(dto, { image: [mockFile] });
 
-      expect(experienceService.createExperience).toHaveBeenCalledWith(dto, mockFile);
+      expect(experienceService.createExperience).toHaveBeenCalledWith(dto, [mockFile]);
       expect(experienceService.createExperience).toHaveBeenCalledTimes(1);
+    });
+
+    it('should merge the legacy image field with the images gallery preserving order', async () => {
+      const cover = { originalname: 'cover.jpg' } as Express.Multer.File;
+      const gallery = ['a.jpg', 'b.jpg'].map(
+        (originalname) => ({ originalname }) as Express.Multer.File,
+      );
+
+      experienceService.createExperience.mockResolvedValueOnce(undefined);
+
+      await controller.createExperienceAsAdmin({} as never, { image: [cover], images: gallery });
+
+      expect(experienceService.createExperience).toHaveBeenCalledWith({}, [
+        cover,
+        gallery[0],
+        gallery[1],
+      ]);
     });
 
     it('should call experienceService.createExperience with null file when no file is uploaded', async () => {
@@ -403,7 +439,7 @@ describe('ExperienceController', () => {
 
       await controller.createExperienceAsAdmin(dto, null);
 
-      expect(experienceService.createExperience).toHaveBeenCalledWith(dto, null);
+      expect(experienceService.createExperience).toHaveBeenCalledWith(dto, []);
     });
 
     it('should return the result from experienceService.createExperience', async () => {
@@ -454,7 +490,7 @@ describe('ExperienceController', () => {
 
       await controller.createExperienceAsAdmin(dto, null);
 
-      expect(experienceService.createExperience).toHaveBeenCalledWith(dto, null);
+      expect(experienceService.createExperience).toHaveBeenCalledWith(dto, []);
     });
   });
 

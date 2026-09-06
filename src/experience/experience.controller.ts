@@ -9,10 +9,10 @@ import {
   Patch,
   Post,
   Query,
-  UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes } from '@nestjs/swagger';
 import { ExperienceService } from './experience.service';
 import { Roles } from 'src/auth/role/roles.decorator';
@@ -25,7 +25,23 @@ import {
   UpdateExperienceFormDto,
   GetExperienceFilterDto,
 } from './experience.model';
-import { IMAGE_UPLOAD } from 'src/common/upload.options';
+import { IMAGE_UPLOAD, MAX_EXPERIENCE_IMAGES } from 'src/common/upload.options';
+
+/// Aceita tanto o campo legado `image` (uma foto) quanto `images` (galeria).
+export interface ExperienceImageFiles {
+  image?: Express.Multer.File[];
+  images?: Express.Multer.File[];
+}
+
+const EXPERIENCE_IMAGE_FIELDS = [
+  { name: 'image', maxCount: 1 },
+  { name: 'images', maxCount: MAX_EXPERIENCE_IMAGES },
+];
+
+const toImageList = (files?: ExperienceImageFiles | null): Express.Multer.File[] => [
+  ...(files?.image ?? []),
+  ...(files?.images ?? []),
+];
 
 @Controller('experience')
 export class ExperienceController {
@@ -55,14 +71,18 @@ export class ExperienceController {
   @Roles(UserType.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('image', IMAGE_UPLOAD))
+  @UseInterceptors(FileFieldsInterceptor(EXPERIENCE_IMAGE_FIELDS, IMAGE_UPLOAD))
   @HttpCode(HttpStatus.NO_CONTENT)
   async updateExperienceAsAdmin(
     @Param('experienceId') experienceId: string,
     @Body() updateExperienceDto: UpdateExperienceFormDto,
-    @UploadedFile() file: Express.Multer.File | null,
+    @UploadedFiles() files: ExperienceImageFiles | null,
   ) {
-    await this.experienceService.updateExperience(experienceId, updateExperienceDto, file);
+    await this.experienceService.updateExperience(
+      experienceId,
+      updateExperienceDto,
+      toImageList(files),
+    );
   }
 
   @Get()
@@ -77,13 +97,13 @@ export class ExperienceController {
   @Roles(UserType.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('image', IMAGE_UPLOAD))
+  @UseInterceptors(FileFieldsInterceptor(EXPERIENCE_IMAGE_FIELDS, IMAGE_UPLOAD))
   @HttpCode(HttpStatus.CREATED)
   async createExperienceAsAdmin(
     @Body() createExperienceDto: CreateExperienceFormDto,
-    @UploadedFile() file: Express.Multer.File | null,
+    @UploadedFiles() files: ExperienceImageFiles | null,
   ) {
-    return await this.experienceService.createExperience(createExperienceDto, file);
+    return await this.experienceService.createExperience(createExperienceDto, toImageList(files));
   }
 
   @Public()
