@@ -683,6 +683,29 @@ describe('ExperienceService', () => {
   });
 
   describe('getExperienceFilter', () => {
+    it('should add the maximum price based on unit price and capacity', async () => {
+      const filterDto: GetExperienceFilterDto = {
+        page: 0,
+        limit: 10,
+        category: 'HOSPEDAGEM',
+      } as never;
+      const toNumber = jest.fn().mockReturnValue(1200);
+      const price = {
+        mul: jest.fn().mockReturnValue({ toNumber }),
+      };
+
+      databaseService.experience.findMany.mockResolvedValueOnce([
+        { id: 'experience-1', price, capacity: 4 },
+      ]);
+      databaseService.experience.count.mockResolvedValueOnce(1);
+
+      const result = await service.getExperienceFilter(filterDto);
+
+      expect(price.mul).toHaveBeenCalledWith(4);
+      expect(toNumber).toHaveBeenCalledTimes(1);
+      expect(result.items[0].priceMax).toBe(1200);
+    });
+
     it('should filter by date range and search term', async () => {
       const filterDto: GetExperienceFilterDto = {
         page: 0,

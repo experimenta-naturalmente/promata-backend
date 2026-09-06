@@ -281,12 +281,17 @@ export class ExperienceService {
     });
 
     const total = await this.databaseService.experience.count({ where });
+    const items = experiences.map((experience) => ({
+      ...experience,
+      priceMax:
+        experience.price == null ? null : experience.price.mul(experience.capacity).toNumber(),
+    }));
 
     return {
       page: getExperienceFilterDto.page,
       limit: getExperienceFilterDto.limit,
       total,
-      items: experiences,
+      items,
     };
   }
 }
