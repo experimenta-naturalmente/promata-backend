@@ -17,6 +17,7 @@ import { RequestType } from 'generated/prisma';
 
 import { Decimal } from '@prisma/client/runtime/library';
 import { StorageService } from 'src/storage/storage.service';
+import { isPerDayOnlyCategory } from 'src/experience/experience-pricing';
 
 const PENDING_LIST: string[] = [
   RequestType.PAYMENT_REQUESTED,
@@ -26,6 +27,25 @@ const PENDING_LIST: string[] = [
   RequestType.CANCELED_REQUESTED,
   RequestType.EDIT_REQUESTED,
 ];
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function countReservationDays(startDate?: Date | null, endDate?: Date | null): number {
+  if (!startDate || !endDate) {
+    return 1;
+  }
+
+  const startMs = startDate.getTime();
+  const endMs = endDate.getTime();
+
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
+    return 1;
+  }
+
+  const diffDays = Math.round((endMs - startMs) / MS_PER_DAY);
+
+  return Math.max(1, diffDays + 1);
+}
 
 const RESERVATION_QUERY = `-- baseQuery
 SELECT
@@ -234,6 +254,7 @@ export class ReservationService {
             experience: {
               select: {
                 name: true,
+                category: true,
                 startDate: true,
                 endDate: true,
                 price: true,
@@ -273,7 +294,16 @@ export class ReservationService {
           history: rg.requests,
           status: rg.requests[rg.requests.length - 1].type,
           price: rg.reservations.reduce((total, res) => {
-            return total.plus(res.experience.price?.mul(res.membersCount) ?? 0);
+            const unitPrice = res.experience.price;
+
+            if (!unitPrice) {
+              return total;
+            }
+
+            const days = countReservationDays(res.startDate, res.endDate);
+            const people = isPerDayOnlyCategory(res.experience.category) ? 1 : res.membersCount;
+
+            return total.plus(unitPrice.mul(people).mul(days));
           }, new Decimal(0)),
           startDate: minDate,
           endDate: maxDate,

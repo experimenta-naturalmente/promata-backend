@@ -353,6 +353,12 @@ describe('ReservationService', () => {
   describe('getReservationGroups', () => {
     const userId = 'user-1';
 
+    const mockExperiencePrice = (unit: number) => ({
+      mul: (people: number) => ({
+        mul: (days: number) => unit * people * days,
+      }),
+    });
+
     it('should map groups, compute price and filter by ALL/PENDING/custom status', async () => {
       const now = new Date('2025-01-01T10:00:00Z');
       const later = new Date('2025-01-02T10:00:00Z');
@@ -371,7 +377,7 @@ describe('ReservationService', () => {
               endDate: later,
               membersCount: 2,
               experience: {
-                price: { mul: (count: number) => 100 * count },
+                price: mockExperiencePrice(100),
               },
             },
           ],
@@ -386,7 +392,7 @@ describe('ReservationService', () => {
               endDate: later,
               membersCount: 1,
               experience: {
-                price: { mul: (count: number) => 50 * count },
+                price: mockExperiencePrice(50),
               },
             },
           ],
@@ -401,7 +407,7 @@ describe('ReservationService', () => {
               endDate: later,
               membersCount: 1,
               experience: {
-                price: { mul: (count: number) => 80 * count },
+                price: mockExperiencePrice(80),
               },
             },
           ],
@@ -413,6 +419,8 @@ describe('ReservationService', () => {
       // status ALL
       let result = await service.getReservationGroups(userId, { status: 'ALL' } as any);
       expect(result).toHaveLength(3);
+      // 01/01 to 02/01 = 2 days inclusive → (100 * 2 people) * 2 days
+      expect(Number(result.find((g: { id: string }) => g.id === 'g1')?.price)).toBe(400);
 
       // status PENDING should include only groups whose last status is in PENDING_LIST
       result = await service.getReservationGroups(userId, { status: 'PENDING' } as any);
@@ -426,6 +434,72 @@ describe('ReservationService', () => {
       } as any);
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('g2');
+    });
+
+    it('should estimate group price as (unit price * people) * inclusive days', async () => {
+      const startDate = new Date('2025-01-01T00:00:00Z');
+      const endDate = new Date('2025-01-03T00:00:00Z');
+
+      databaseService.reservationGroup.findMany.mockResolvedValue([
+        {
+          id: 'g-total',
+          members: [],
+          requests: [{ type: RequestType.CREATED, createdAt: startDate }],
+          reservations: [
+            {
+              startDate,
+              endDate,
+              membersCount: 3,
+              experience: {
+                price: mockExperiencePrice(80),
+              },
+            },
+            {
+              startDate,
+              endDate: startDate,
+              membersCount: 2,
+              experience: {
+                price: mockExperiencePrice(50),
+              },
+            },
+          ],
+        },
+      ] as never);
+
+      const result = await service.getReservationGroups(userId, { status: 'ALL' } as any);
+
+      // First reservation: 3 days * 3 people * 80 = 720
+      // Second reservation (same day): 1 day * 2 people * 50 = 100
+      expect(Number(result[0].price)).toBe(820);
+    });
+
+    it('should estimate house hosting as unit price * days only', async () => {
+      const startDate = new Date('2025-01-01T00:00:00Z');
+      const endDate = new Date('2025-01-03T00:00:00Z');
+
+      databaseService.reservationGroup.findMany.mockResolvedValue([
+        {
+          id: 'g-house',
+          members: [],
+          requests: [{ type: RequestType.CREATED, createdAt: startDate }],
+          reservations: [
+            {
+              startDate,
+              endDate,
+              membersCount: 5,
+              experience: {
+                category: 'HOSTING_HOUSE',
+                price: mockExperiencePrice(200),
+              },
+            },
+          ],
+        },
+      ] as never);
+
+      const result = await service.getReservationGroups(userId, { status: 'ALL' } as any);
+
+      // 3 days * 1 (house) * 200 = 600
+      expect(Number(result[0].price)).toBe(600);
     });
   });
 

@@ -8,6 +8,7 @@ import {
   GetExperienceFilterDto,
   UpdateExperienceFormDto,
 } from './experience.model';
+import { isPerDayOnlyCategory } from './experience-pricing';
 
 const IMAGE_GALLERY_SELECT = {
   select: { image: { select: { url: true } } },
@@ -326,7 +327,11 @@ export class ExperienceService {
     const items = experiences.map((experience) => ({
       ...flattenGallery(experience),
       priceMax:
-        experience.price == null ? null : experience.price.mul(experience.capacity).toNumber(),
+        experience.price == null
+          ? null
+          : isPerDayOnlyCategory(experience.category)
+            ? experience.price.toNumber()
+            : experience.price.mul(experience.capacity).toNumber(),
     }));
 
     return {

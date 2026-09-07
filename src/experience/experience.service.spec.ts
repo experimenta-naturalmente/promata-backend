@@ -858,6 +858,36 @@ describe('ExperienceService', () => {
       ]);
     });
 
+    it('should keep house hosting priceMax as the daily rate', async () => {
+      const filterDto: GetExperienceFilterDto = {
+        page: 0,
+        limit: 10,
+        category: 'HOSTING_HOUSE',
+      } as never;
+      const toNumber = jest.fn().mockReturnValue(350);
+      const price = {
+        mul: jest.fn(),
+        toNumber,
+      };
+
+      databaseService.experience.findMany.mockResolvedValueOnce([
+        {
+          id: 'house-1',
+          category: 'HOSTING_HOUSE',
+          price,
+          capacity: 8,
+          images: [],
+        },
+      ]);
+      databaseService.experience.count.mockResolvedValueOnce(1);
+
+      const result = await service.getExperienceFilter(filterDto);
+
+      expect(price.mul).not.toHaveBeenCalled();
+      expect(toNumber).toHaveBeenCalledTimes(1);
+      expect(result.items[0].priceMax).toBe(350);
+    });
+
     it('should filter by date range and search term', async () => {
       const filterDto: GetExperienceFilterDto = {
         page: 0,
