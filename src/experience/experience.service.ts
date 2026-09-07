@@ -8,7 +8,7 @@ import {
   GetExperienceFilterDto,
   UpdateExperienceFormDto,
 } from './experience.model';
-import { isPerDayOnlyCategory } from './experience-pricing';
+import { isPerDayOnlyCategory, toPublicExperienceFilterCategory } from './experience-pricing';
 
 const IMAGE_GALLERY_SELECT = {
   select: { image: { select: { url: true } } },
@@ -286,7 +286,7 @@ export class ExperienceService {
     }
 
     const where: Prisma.ExperienceWhereInput = {
-      category: getExperienceFilterDto.category,
+      category: toPublicExperienceFilterCategory(getExperienceFilterDto.category),
       name: {
         contains: getExperienceFilterDto.search,
         mode: 'insensitive',

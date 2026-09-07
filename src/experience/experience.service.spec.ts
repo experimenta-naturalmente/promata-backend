@@ -888,6 +888,27 @@ describe('ExperienceService', () => {
       expect(result.items[0].priceMax).toBe(350);
     });
 
+    it('should include room and house hosting when filtering by HOSTING', async () => {
+      const filterDto: GetExperienceFilterDto = {
+        page: 0,
+        limit: 10,
+        category: 'HOSTING',
+      } as never;
+
+      databaseService.experience.findMany.mockResolvedValueOnce([]);
+      databaseService.experience.count.mockResolvedValueOnce(0);
+
+      await service.getExperienceFilter(filterDto);
+
+      expect(databaseService.experience.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            category: { in: ['HOSTING', 'HOSTING_HOUSE'] },
+          }),
+        }),
+      );
+    });
+
     it('should filter by date range and search term', async () => {
       const filterDto: GetExperienceFilterDto = {
         page: 0,
